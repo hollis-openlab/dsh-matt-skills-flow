@@ -21,13 +21,14 @@ export declare class FlowUiStore {
     toggleCreate(): void;
     select(flowId: string): void;
     load(): Promise<void>;
-    create(title: string, repoRoot: string): Promise<void>;
+    create(title: string, repoRoot: string, initialContext?: string): Promise<void>;
     advance(flow: FlowRecord, action: string): Promise<void>;
     decide(flow: FlowRecord, question: string, answer: string): Promise<void>;
     ticket(flow: FlowRecord, title: string, dependsOn?: string[], acceptanceCriteria?: string[], workflowRole?: string): Promise<void>;
     updateTicket(flow: FlowRecord, ticketId: string, title: string, dependsOn: string[], acceptanceCriteria: string[], workflowRole?: string): Promise<void>;
     startActivity(flow: FlowRecord, kind: 'research' | 'prototype' | 'wayfinder', question: string, expectedEvidence?: string): Promise<void>;
     completeActivity(flow: FlowRecord, activityId: string, output: string, sourceRef: string, handoff?: 'to-grilling' | 'to-spec' | 'to-tickets'): Promise<void>;
+    rejectAcceptance(flow: FlowRecord, reason: string, returnTo: 'grilling' | 'wayfinding' | 'ticketing'): Promise<void>;
     lane(flow: FlowRecord, ticketId: string): Promise<void>;
     publish(flow: FlowRecord): Promise<void>;
     provisionLane(flow: FlowRecord, laneId: string): Promise<void>;
@@ -41,7 +42,7 @@ export declare class FlowUiStore {
     previewFrontier(flow: FlowRecord): Promise<void>;
     startFrontier(flow: FlowRecord, maxConcurrent?: number): Promise<void>;
     requestReview(flow: FlowRecord): Promise<void>;
-    disposeFinding(flow: FlowRecord, findingId: string): Promise<void>;
+    disposeFinding(flow: FlowRecord, findingId: string, kind?: 'fixed' | 'rejected' | 'deferred'): Promise<void>;
     generateSpec(flow: FlowRecord): Promise<void>;
     approveSpec(flow: FlowRecord): Promise<void>;
     exportEvidence(flow: FlowRecord): Promise<void>;

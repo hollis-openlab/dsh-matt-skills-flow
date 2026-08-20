@@ -90,6 +90,27 @@ export interface ReviewFinding {
         readonly reason: string;
     };
 }
+export interface AdmissionDisposition {
+    readonly id: string;
+    readonly category: 'lifecycle' | 'configuration';
+    readonly subject: string;
+    readonly status: 'covered' | 'not-applicable' | 'deferred' | 'missing';
+    readonly evidence: readonly string[];
+    readonly reason?: string;
+}
+export interface AdmissionMatrix {
+    readonly lifecycle: readonly AdmissionDisposition[];
+    readonly configuration: readonly AdmissionDisposition[];
+}
+export interface AcceptanceTrace {
+    readonly ticketId: string;
+    readonly criterion: string;
+    readonly source: string;
+    readonly productionPath: string;
+    readonly falsifyingCase: string;
+    readonly observableSignal: string;
+    readonly status: 'covered' | 'missing' | 'deferred';
+}
 export declare function frontierFor(flow: Pick<FlowRecord, 'id' | 'revision' | 'tickets' | 'lanes'>, maxConcurrent: number): FrontierPlan;
 export type GateResult = {
     readonly kind: 'pass';
@@ -135,6 +156,7 @@ export interface LaneRecord {
     readonly packetArtifactId?: string;
     readonly packetSha256?: string;
     readonly commit?: string;
+    readonly changedFiles?: readonly string[];
     readonly resultArtifactId?: string;
     readonly resultSha256?: string;
     readonly resultSummary?: string;
@@ -145,6 +167,9 @@ export interface QuestionRecord {
     readonly id: string;
     readonly ticketId?: string;
     readonly question: string;
+    readonly context?: string;
+    readonly options?: readonly string[];
+    readonly sourceRefs?: readonly string[];
     readonly status: 'pending' | 'answered' | 'dismissed';
     readonly createdAt: number;
     readonly answer?: string;
@@ -167,6 +192,7 @@ export interface FlowRecord {
     readonly id: FlowId;
     readonly revision: number;
     readonly title: string;
+    readonly initialContext?: string;
     readonly workspaceId?: WorkspaceId;
     readonly repoRoot: string;
     readonly rootSessionId?: string;
@@ -183,10 +209,13 @@ export interface FlowRecord {
     readonly activities?: readonly ActivityRecord[];
     readonly artifacts: readonly ArtifactRecord[];
     readonly tracker?: {
-        readonly kind: 'local';
-        readonly root: string;
+        readonly kind: 'local' | 'github';
+        readonly root?: string;
+        readonly repository?: string;
         readonly graphPath: string;
         readonly graphSha256: string;
+        readonly issueNumbers?: readonly number[];
+        readonly issueUrls?: readonly string[];
         readonly publishedAt: number;
     };
     readonly integration?: {
@@ -210,11 +239,14 @@ export interface FlowRecord {
     readonly review?: {
         readonly candidateArtifactId: string;
         readonly candidateSha256: string;
+        readonly admissionArtifactId?: string;
+        readonly admissionSha256?: string;
         readonly fixedPoint: string;
         readonly createdAt: number;
         readonly status?: 'frozen' | 'running' | 'complete' | 'failed';
         readonly round?: number;
         readonly findings?: readonly ReviewFinding[];
+        readonly admissionMatrix?: AdmissionMatrix;
     };
     readonly recovery?: {
         readonly status: 'clean' | 'required' | 'reconciled';
@@ -254,6 +286,7 @@ export declare const flowRecordSchema: z.ZodObject<{
     id: z.ZodString;
     revision: z.ZodNumber;
     title: z.ZodString;
+    initialContext: z.ZodOptional<z.ZodString>;
     workspaceId: z.ZodOptional<z.ZodString>;
     repoRoot: z.ZodString;
     rootSessionId: z.ZodOptional<z.ZodString>;
@@ -356,6 +389,7 @@ export declare const flowRecordSchema: z.ZodObject<{
         packetArtifactId: z.ZodOptional<z.ZodString>;
         packetSha256: z.ZodOptional<z.ZodString>;
         commit: z.ZodOptional<z.ZodString>;
+        changedFiles: z.ZodOptional<z.ZodArray<z.ZodString>>;
         resultArtifactId: z.ZodOptional<z.ZodString>;
         resultSha256: z.ZodOptional<z.ZodString>;
         resultSummary: z.ZodOptional<z.ZodString>;
@@ -366,6 +400,9 @@ export declare const flowRecordSchema: z.ZodObject<{
         id: z.ZodString;
         ticketId: z.ZodOptional<z.ZodString>;
         question: z.ZodString;
+        context: z.ZodOptional<z.ZodString>;
+        options: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        sourceRefs: z.ZodOptional<z.ZodArray<z.ZodString>>;
         status: z.ZodEnum<{
             pending: "pending";
             answered: "answered";
@@ -416,13 +453,21 @@ export declare const flowRecordSchema: z.ZodObject<{
         relativePath: z.ZodString;
         createdAt: z.ZodNumber;
     }, z.core.$strict>>>;
-    tracker: z.ZodOptional<z.ZodObject<{
+    tracker: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
         kind: z.ZodLiteral<"local">;
         root: z.ZodString;
         graphPath: z.ZodString;
         graphSha256: z.ZodString;
         publishedAt: z.ZodNumber;
-    }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"github">;
+        repository: z.ZodString;
+        graphPath: z.ZodString;
+        graphSha256: z.ZodString;
+        issueNumbers: z.ZodArray<z.ZodNumber>;
+        issueUrls: z.ZodArray<z.ZodString>;
+        publishedAt: z.ZodNumber;
+    }, z.core.$strict>]>>;
     integration: z.ZodOptional<z.ZodObject<{
         branch: z.ZodString;
         worktreePath: z.ZodString;
@@ -431,8 +476,8 @@ export declare const flowRecordSchema: z.ZodObject<{
     }, z.core.$strict>>;
     skillSnapshot: z.ZodOptional<z.ZodObject<{
         status: z.ZodEnum<{
-            ready: "ready";
             missing: "missing";
+            ready: "ready";
             unknown: "unknown";
         }>;
         count: z.ZodNumber;
@@ -453,6 +498,8 @@ export declare const flowRecordSchema: z.ZodObject<{
     review: z.ZodOptional<z.ZodObject<{
         candidateArtifactId: z.ZodString;
         candidateSha256: z.ZodString;
+        admissionArtifactId: z.ZodOptional<z.ZodString>;
+        admissionSha256: z.ZodOptional<z.ZodString>;
         fixedPoint: z.ZodString;
         createdAt: z.ZodNumber;
         status: z.ZodOptional<z.ZodEnum<{
@@ -484,6 +531,40 @@ export declare const flowRecordSchema: z.ZodObject<{
                 reason: z.ZodString;
             }, z.core.$strict>>;
         }, z.core.$strict>>>;
+        admissionMatrix: z.ZodOptional<z.ZodObject<{
+            lifecycle: z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                category: z.ZodEnum<{
+                    lifecycle: "lifecycle";
+                    configuration: "configuration";
+                }>;
+                subject: z.ZodString;
+                status: z.ZodEnum<{
+                    deferred: "deferred";
+                    covered: "covered";
+                    "not-applicable": "not-applicable";
+                    missing: "missing";
+                }>;
+                evidence: z.ZodArray<z.ZodString>;
+                reason: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+            configuration: z.ZodArray<z.ZodObject<{
+                id: z.ZodString;
+                category: z.ZodEnum<{
+                    lifecycle: "lifecycle";
+                    configuration: "configuration";
+                }>;
+                subject: z.ZodString;
+                status: z.ZodEnum<{
+                    deferred: "deferred";
+                    covered: "covered";
+                    "not-applicable": "not-applicable";
+                    missing: "missing";
+                }>;
+                evidence: z.ZodArray<z.ZodString>;
+                reason: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
     }, z.core.$strict>>;
     spec: z.ZodOptional<z.ZodObject<{
         status: z.ZodEnum<{
@@ -535,6 +616,7 @@ export declare function nextPhaseFor(phase: FlowPhase): FlowPhase | undefined;
 export declare function createFlowRecord(input: {
     id: FlowId;
     title: string;
+    initialContext?: string;
     repoRoot: string;
     rootSessionId?: string;
     workspaceId?: WorkspaceId;
