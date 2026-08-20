@@ -30,11 +30,31 @@ export interface TrackerSnapshot {
   readonly kind: TrackerRecord['kind']
   readonly graphSha256: string
   readonly drift: readonly string[]
+  readonly statuses: Readonly<Record<string, string>>
+}
+
+export interface TrackerRef {
+  readonly kind: TrackerRecord['kind']
+  readonly key: string
+  readonly url?: string
+}
+
+export interface TrackerArtifact {
+  readonly ref: TrackerRef
+  readonly title: string
+  readonly body: string
+  readonly sha256: string
 }
 
 export interface TrackerAdapter {
   publish(flow: TrackerFlow, signal?: AbortSignal): Promise<TrackerRecord>
   inspect(flow: TrackerFlow, publication: TrackerRecord, signal?: AbortSignal): Promise<TrackerSnapshot>
+  publishSpec(flow: TrackerFlow, title: string, body: string, signal?: AbortSignal): Promise<TrackerRef>
+  readSpec(flow: TrackerFlow, ref: TrackerRef, signal?: AbortSignal): Promise<TrackerArtifact>
+  publishTickets(flow: TrackerFlow, signal?: AbortSignal): Promise<readonly TrackerRef[]>
+  readTicket(flow: TrackerFlow, ref: TrackerRef, signal?: AbortSignal): Promise<TrackerArtifact>
+  readStatuses(flow: TrackerFlow, publication: TrackerRecord, signal?: AbortSignal): Promise<Readonly<Record<string, string>>>
+  appendComment(flow: TrackerFlow, publication: TrackerRecord, ticketId: string, body: string, signal?: AbortSignal): Promise<TrackerRef>
 }
 
 export class LocalTracker implements TrackerAdapter {
@@ -63,7 +83,45 @@ export class LocalTracker implements TrackerAdapter {
       const issue = await readFile(issuePath, 'utf8').catch(() => undefined)
       if (issue !== ticketBody(ticket, new Map())) drift.push(`ticket:${ticket.id}`)
     }
-    return { kind: 'local', graphSha256, drift }
+    return { kind: 'local', graphSha256, drift, statuses: Object.fromEntries(flow.tickets.map(ticket => [ticket.id, ticket.status])) }
+  }
+
+  async publishSpec(flow: TrackerFlow, title: string, body: string): Promise<TrackerRef> {
+    const path = join(resolve(flow.repoRoot, '.scratch', slug(`${flow.title}-${flow.id.slice(-8)}`)), 'spec.md')
+    await mkdir(resolve(path, '..'), { recursive: true })
+    await writeOwned(path, Buffer.from(`# ${title}\n\n${body.trim()}\n`, 'utf8'))
+    return { kind: 'local', key: path }
+  }
+
+  async readSpec(flow: TrackerFlow, ref: TrackerRef): Promise<TrackerArtifact> {
+    const body = await readOwnedTrackerPath(flow.repoRoot, ref.key)
+    return { ref, title: body.split('\n')[0]?.replace(/^#\s*/, '') ?? '', body, sha256: createHash('sha256').update(body).digest('hex') }
+  }
+
+  async publishTickets(flow: TrackerFlow): Promise<readonly TrackerRef[]> {
+    const publication = await this.publish(flow)
+    return flow.tickets.map((ticket, index) => ({ kind: 'local' as const, key: join(publication.root, 'issues', `${String(index + 1).padStart(2, '0')}-${slug(ticket.title)}.md`) }))
+  }
+
+  async readTicket(flow: TrackerFlow, ref: TrackerRef): Promise<TrackerArtifact> {
+    const body = await readOwnedTrackerPath(flow.repoRoot, ref.key)
+    return { ref, title: body.split('\n')[0]?.replace(/^#\s*/, '') ?? '', body, sha256: createHash('sha256').update(body).digest('hex') }
+  }
+
+  async readStatuses(flow: TrackerFlow, _publication: LocalTrackerRecord): Promise<Readonly<Record<string, string>>> {
+    return Object.fromEntries(flow.tickets.map(ticket => [ticket.id, ticket.status]))
+  }
+
+  async appendComment(flow: TrackerFlow, publication: LocalTrackerRecord, ticketId: string, body: string): Promise<TrackerRef> {
+    const index = flow.tickets.findIndex(ticket => ticket.id === ticketId)
+    if (index < 0) throw new Error(`TRACKER_TICKET_NOT_FOUND: ${ticketId}`)
+    const ticket = flow.tickets[index]
+    const path = join(publication.root, 'issues', `${String(index + 1).padStart(2, '0')}-${slug(ticket.title)}.md`)
+    const expected = Buffer.from(ticketBody(ticket, new Map()), 'utf8')
+    const existing = await readFile(path)
+    if (!existing.equals(expected)) throw new Error(`TRACKER_DRIFT: ticket:${ticketId}`)
+    await writeIfUnchanged(path, existing, Buffer.from(`${existing.toString('utf8')}\n## Comment\n${body.trim()}\n`, 'utf8'))
+    return { kind: 'local', key: path }
   }
 }
 
@@ -109,6 +167,7 @@ export class GitHubTracker implements TrackerAdapter {
 
   async inspect(flow: TrackerFlow, publication: GitHubTrackerRecord, signal?: AbortSignal): Promise<TrackerSnapshot> {
     const drift: string[] = []
+    const statuses: Record<string, string> = {}
     const bytes = await readFile(publication.graphPath).catch(() => undefined)
     const graphSha256 = bytes === undefined ? '' : createHash('sha256').update(bytes).digest('hex')
     if (graphSha256 !== publication.graphSha256) drift.push('graph')
@@ -116,10 +175,45 @@ export class GitHubTracker implements TrackerAdapter {
     for (const [index, ticket] of ordered.entries()) {
       const number = publication.issueNumbers[index]
       if (number === undefined) { drift.push(`ticket:${ticket.id}`); continue }
-      const payload = await this.runJson<{ title: string; body: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${publication.repository}/issues/${number}`, '--jq', '{title: .title, body: .body}'], signal)
+      const payload = await this.runJson<{ title: string; body: string; state: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${publication.repository}/issues/${number}`, '--jq', '{title: .title, body: .body, state: .state}'], signal)
+      statuses[ticket.id] = payload.state
       if (payload.title !== ticket.title || payload.body !== ticketBody(ticket, new Map(ordered.slice(0, index).map((item, itemIndex) => [item.id, publication.issueNumbers[itemIndex] as number])))) drift.push(`ticket:${ticket.id}`)
     }
-    return { kind: 'github', graphSha256, drift }
+    return { kind: 'github', graphSha256, drift, statuses }
+  }
+
+  async publishSpec(flow: TrackerFlow, title: string, body: string, signal?: AbortSignal): Promise<TrackerRef> {
+    const repository = await this.resolveRepository(flow.repoRoot, signal)
+    const payload = await this.runJson<{ number: number; html_url: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${repository}/issues`, '--method', 'POST', '-f', `title=${title}`, '-f', `body=${body}`], signal)
+    return { kind: 'github', key: String(payload.number), url: payload.html_url }
+  }
+
+  async readSpec(flow: TrackerFlow, ref: TrackerRef, signal?: AbortSignal): Promise<TrackerArtifact> {
+    const repository = await this.resolveRepository(flow.repoRoot, signal)
+    const payload = await this.runJson<{ title: string; body: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${repository}/issues/${ref.key}`, '--jq', '{title: .title, body: .body}'], signal)
+    return { ref, title: payload.title, body: payload.body, sha256: createHash('sha256').update(payload.body).digest('hex') }
+  }
+
+  async publishTickets(flow: TrackerFlow, signal?: AbortSignal): Promise<readonly TrackerRef[]> {
+    const publication = await this.publish(flow, signal)
+    return publication.issueNumbers.map((number, index) => ({ kind: 'github' as const, key: String(number), url: publication.issueUrls[index] }))
+  }
+
+  async readTicket(flow: TrackerFlow, ref: TrackerRef, signal?: AbortSignal): Promise<TrackerArtifact> {
+    return await this.readSpec(flow, ref, signal)
+  }
+
+  async readStatuses(flow: TrackerFlow, publication: GitHubTrackerRecord, signal?: AbortSignal): Promise<Readonly<Record<string, string>>> {
+    return (await this.inspect(flow, publication, signal)).statuses
+  }
+
+  async appendComment(flow: TrackerFlow, publication: GitHubTrackerRecord, ticketId: string, body: string, signal?: AbortSignal): Promise<TrackerRef> {
+    const index = flow.tickets.findIndex(ticket => ticket.id === ticketId)
+    if (index < 0) throw new Error(`TRACKER_TICKET_NOT_FOUND: ${ticketId}`)
+    const number = publication.issueNumbers[index]
+    if (number === undefined) throw new Error(`TRACKER_TICKET_NOT_FOUND: ${ticketId}`)
+    const payload = await this.runJson<{ id: number; html_url: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${publication.repository}/issues/${number}/comments`, '--method', 'POST', '-f', `body=${body}`], signal)
+    return { kind: 'github', key: String(payload.id), url: payload.html_url }
   }
 
   private async resolveRepository(repoRoot: string, signal?: AbortSignal): Promise<string> {
@@ -217,6 +311,22 @@ async function writeOwned(path: string, bytes: Buffer): Promise<void> {
   }
   const temporary = `${path}.tmp-${randomUUID()}`
   await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 })
+  await rename(temporary, path)
+}
+
+async function readOwnedTrackerPath(repoRoot: string, path: string): Promise<string> {
+  const root = resolve(repoRoot, '.scratch')
+  const target = resolve(path)
+  const relative = target.slice(root.length)
+  if (target !== root && (!relative.startsWith('/') && !relative.startsWith('\\'))) throw new Error('TRACKER_PATH_ESCAPE: tracker reference leaves .scratch')
+  return await readFile(target, 'utf8')
+}
+
+async function writeIfUnchanged(path: string, expected: Buffer, next: Buffer): Promise<void> {
+  const current = await readFile(path)
+  if (!current.equals(expected)) throw new Error(`TRACKER_DRIFT: refusing to overwrite ${path}`)
+  const temporary = `${path}.tmp-${randomUUID()}`
+  await writeFile(temporary, next, { flag: 'wx', mode: 0o600 })
   await rename(temporary, path)
 }
 

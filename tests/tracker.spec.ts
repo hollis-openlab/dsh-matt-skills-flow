@@ -21,7 +21,7 @@ describe('LocalTracker', () => {
     await expect(new LocalTracker().inspect({
       id: 'flow-a' as never, title: 'Login Flow', repoRoot,
       tickets: [{ id: 'ticket-a', title: 'Persist login', status: 'open', blockedBy: [], dependsOn: [] }],
-    }, publication)).resolves.toEqual({ kind: 'local', graphSha256: publication.graphSha256, drift: [] })
+    }, publication)).resolves.toEqual({ kind: 'local', graphSha256: publication.graphSha256, drift: [], statuses: { 'ticket-a': 'open' } })
     await writeFile(publication.graphPath, 'tampered\n', 'utf8')
     await expect(new LocalTracker().inspect({
       id: 'flow-a' as never, title: 'Login Flow', repoRoot,
