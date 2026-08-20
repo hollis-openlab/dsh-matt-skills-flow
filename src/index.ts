@@ -278,13 +278,22 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (this.config.defaultMaxReviewRounds > this.config.hardMaxReviewRounds) throw new Error('defaultMaxReviewRounds cannot exceed hardMaxReviewRounds')
     await this.repository.open()
     for (const flow of this.repository.list()) {
-      if (!flow.lanes.some(lane => lane.status === 'running') && flow.review?.status !== 'running') continue
+      const interruptedLanes = flow.lanes.filter(lane => lane.status === 'running' || lane.status === 'integrating')
+      const integrationStatus = flow.integration === undefined ? '' : await this.git.status(flow.integration.worktreePath).catch(() => 'RECOVERY_REQUIRED: integration worktree unavailable')
+      if (interruptedLanes.length === 0 && flow.review?.status !== 'running' && integrationStatus.length === 0) continue
+      const reason = [
+        interruptedLanes.length > 0 ? `lane-interrupted:${interruptedLanes.map(lane => lane.id).join(',')}` : '',
+        flow.review?.status === 'running' ? 'review-interrupted' : '',
+        integrationStatus.length > 0 ? 'integration-worktree-dirty-or-unavailable' : '',
+      ].filter(Boolean).join(';')
       await this.repository.update(flow.id, flow.revision, current => ({
         ...current,
         revision: current.revision + 1,
-        lanes: current.lanes.map(lane => lane.status === 'running' ? { ...lane, status: 'failed' as const, resultSummary: 'RECOVERY_REQUIRED: Lane Agent was interrupted by Host restart', updatedAt: Date.now() } : lane),
+        lanes: current.lanes.map(lane => lane.status === 'running' || lane.status === 'integrating'
+          ? { ...lane, status: 'failed' as const, resultSummary: lane.status === 'integrating' ? 'RECOVERY_REQUIRED: Lane integration was interrupted by Host restart' : 'RECOVERY_REQUIRED: Lane Agent was interrupted by Host restart', updatedAt: Date.now() }
+          : lane),
         review: current.review?.status === 'running' ? { ...current.review, status: 'failed' as const } : current.review,
-        recovery: { status: 'required' as const, reason: current.review?.status === 'running' ? 'review-interrupted' : 'lane-interrupted', observedAt: Date.now() },
+        recovery: { status: 'required' as const, reason, observedAt: Date.now() },
         updatedAt: Date.now(),
       }))
     }
