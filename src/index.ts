@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { renderSkillContent, type SkillDefinition } from '@deepseek-ai/dsh-skill'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FlowRecord } from './domain.ts'
-import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
+import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type AcceptanceTrace, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
 import { FlowRepository } from './storage.ts'
 import { ArtifactStore } from './artifacts.ts'
 import { GitHubTracker, LocalTracker, type TrackerAdapter } from './tracker.ts'
@@ -843,6 +843,8 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const baseCommit = current.integration?.baseCommit ?? candidateCommit
     const changedFiles = await this.git.changedFiles(candidateRoot, baseCommit, candidateCommit)
     const fixedPoint = createHash('sha256').update(JSON.stringify({ candidateCommit, laneResults: completed.map(lane => lane.resultSha256 ?? '') })).digest('hex')
+    const acceptanceTrace = buildAcceptanceTrace(current, completed)
+    if (acceptanceTrace.length === 0 || acceptanceTrace.some(trace => trace.status !== 'covered')) throw new Error('REVIEW_ADMISSION_FAILED: every acceptance criterion needs a completed Lane Receipt and observable signal')
     const candidate = await this.artifactStore.put({
       kind: 'review', mediaType: 'application/json',
       bytes: Buffer.from(JSON.stringify({
@@ -853,7 +855,18 @@ export class MattSkillsFlowService extends TypertRemoteService {
         laneCommits: completed.map(lane => ({ laneId: lane.id, ticketId: lane.ticketId, commit: lane.commit, baseCommit: lane.baseCommit })),
         specSha256: current.spec?.sha256, graphSha256: current.tracker?.graphSha256,
         decisionLedgerSha256: current.artifacts.find(artifact => artifact.kind === 'decision')?.sha256,
-        tickets: current.tickets, decisions: current.decisions, lanes: completed,
+        acceptanceTrace, tickets: current.tickets, decisions: current.decisions, lanes: completed,
+      }), 'utf8'),
+    })
+    const admission = await this.artifactStore.put({
+      kind: 'review', mediaType: 'application/json',
+      bytes: Buffer.from(JSON.stringify({
+        schema: 'dsh-matt-skills-flow/review-admission/v1', flowId: current.id, candidateArtifactId: candidate.id, candidateSha256: candidate.sha256,
+        candidateCommit, specSha256: current.spec?.sha256, graphSha256: current.tracker?.graphSha256,
+        decisionLedgerSha256: current.artifacts.find(artifact => artifact.kind === 'decision')?.sha256,
+        changedFiles, acceptanceTrace,
+        checks: completed.map(lane => ({ laneId: lane.id, receiptArtifactId: lane.resultArtifactId, resultSha256: lane.resultSha256 })),
+        knownDeferred: [],
       }), 'utf8'),
     })
     return await this.repository.update(flowId, request.expectedRevision, record => ({
@@ -861,9 +874,9 @@ export class MattSkillsFlowService extends TypertRemoteService {
       revision: record.revision + 1,
       phase: 'ready-for-acceptance',
       nextAction: nextActionFor('ready-for-acceptance'),
-      review: { candidateArtifactId: candidate.id, candidateSha256: candidate.sha256, fixedPoint, createdAt: Date.now(), status: 'frozen' as const, round: 0, findings: [] },
+      review: { candidateArtifactId: candidate.id, candidateSha256: candidate.sha256, admissionArtifactId: admission.id, admissionSha256: admission.sha256, fixedPoint, createdAt: Date.now(), status: 'frozen' as const, round: 0, findings: [] },
       acceptance: { status: 'ready' as const, candidateCommit },
-      artifacts: [...record.artifacts, candidate],
+      artifacts: [...record.artifacts, candidate, admission],
       updatedAt: Date.now(),
     }))
   }
@@ -875,7 +888,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const flowId = FlowId(request.flowId)
     const current = this.repository.get(flowId)
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
-    if (current.review?.status !== 'complete') throw new Error('ACCEPTANCE_GATE_BLOCKED: review is not complete')
+    if (current.review?.status !== 'complete' || current.review.admissionArtifactId === undefined || current.review.admissionSha256 === undefined) throw new Error('ACCEPTANCE_GATE_BLOCKED: review admission is not complete')
     if (current.review.candidateArtifactId !== request.candidateArtifactId) throw new Error('ACCEPTANCE_CANDIDATE_MISMATCH: candidate artifact is not the frozen review target')
     if (current.acceptance?.status !== 'ready' || current.acceptance.candidateCommit === undefined) throw new Error('ACCEPTANCE_GATE_BLOCKED: candidate is not ready for human acceptance')
     if ((current.review.findings ?? []).some(finding => finding.severity !== 'note' && finding.disposition === undefined)) throw new Error('ACCEPTANCE_GATE_BLOCKED: unresolved review findings remain')
@@ -967,7 +980,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const current = this.repository.get(flowId)
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     const hasBlockingFindings = (current.review?.findings ?? []).some(finding => finding.severity !== 'note')
-    if (current.review === undefined || (current.review.status !== undefined && current.review.status !== 'frozen' && current.review.status !== 'failed' && !(current.review.status === 'complete' && hasBlockingFindings))) throw new Error('REVIEW_ADMISSION_FAILED: freeze a candidate before review')
+    if (current.review === undefined || current.review.admissionArtifactId === undefined || current.review.admissionSha256 === undefined || (current.review.status !== undefined && current.review.status !== 'frozen' && current.review.status !== 'failed' && !(current.review.status === 'complete' && hasBlockingFindings))) throw new Error('REVIEW_ADMISSION_FAILED: a passed admission artifact and frozen candidate are required')
     const reviewRound = current.review?.round ?? 0
     if (current.review?.status === 'complete' && hasBlockingFindings && reviewRound >= this.config.defaultMaxReviewRounds) throw new Error(`REVIEW_ROUNDS_EXCEEDED: maximum remediation rounds ${this.config.defaultMaxReviewRounds} reached`)
     const artifact = current.artifacts.find(item => item.id === current.review?.candidateArtifactId)
@@ -1301,6 +1314,23 @@ export class MattSkillsFlowService extends TypertRemoteService {
 }
 
 export default MattSkillsFlowService
+
+function buildAcceptanceTrace(flow: FlowRecord, completed: readonly FlowRecord['lanes'][number][]): AcceptanceTrace[] {
+  return flow.tickets.flatMap(ticket => {
+    const lane = completed.find(item => item.ticketId === ticket.id)
+    return (ticket.acceptanceCriteria ?? []).map(criterion => ({
+      ticketId: ticket.id,
+      criterion,
+      source: `ticket:${ticket.id}`,
+      productionPath: lane === undefined ? 'missing-lane' : `lane:${lane.id}:worktree`,
+      falsifyingCase: lane === undefined ? 'missing-lane-receipt' : `lane:${lane.id}:status!=integrated`,
+      observableSignal: lane?.resultArtifactId === undefined || lane.resultSha256 === undefined
+        ? 'missing-lane-receipt'
+        : `artifact:${lane.resultArtifactId}:${lane.resultSha256}`,
+      status: lane?.status === 'integrated' && lane.resultArtifactId !== undefined && lane.resultSha256 !== undefined ? 'covered' as const : 'missing' as const,
+    }))
+  })
+}
 
 function parseLaneResult(value: unknown): { status: 'completed' | 'blocked' | 'failed'; summary: string; changedFiles: string[]; commit?: string; question?: string } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('LANE_RESULT_INVALID: structured result must be an object')

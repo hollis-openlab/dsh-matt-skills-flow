@@ -14,7 +14,7 @@ const flowSchema = z.object({
     z.object({ kind: z.literal('github'), repository: z.string(), graphPath: z.string(), graphSha256: z.string(), issueNumbers: z.array(z.number().int().positive()), issueUrls: z.array(z.string().url()), publishedAt: z.number() }).strict(),
   ]).optional(),
   integration: z.object({ branch: z.string(), worktreePath: z.string(), baseCommit: z.string(), headCommit: z.string() }).strict().optional(),
-  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
+  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), admissionArtifactId: z.string().optional(), admissionSha256: z.string().optional(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
   recovery: z.object({ status: z.string(), reason: z.string().optional(), observedAt: z.number() }).strict().optional(),
   spec: z.object({ status: z.string(), artifactId: z.string(), sha256: z.string(), createdAt: z.number(), approvedAt: z.number().optional() }).strict().optional(),
   export: z.object({ artifactId: z.string(), sha256: z.string(), createdAt: z.number() }).strict().optional(),
