@@ -5,6 +5,7 @@ import type { FlowRecord } from './domain.ts';
 export declare const CREATE_FLOW_SCHEMA: z.ZodObject<{
     title: z.ZodString;
     repoRoot: z.ZodString;
+    initialContext: z.ZodOptional<z.ZodString>;
     workspaceId: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
 export declare const ADVANCE_FLOW_SCHEMA: z.ZodObject<{
@@ -34,6 +35,7 @@ export declare const TYPERT_REMOTE: {
                     title: z.ZodString;
                     workspaceId: z.ZodOptional<z.ZodString>;
                     repoRoot: z.ZodString;
+                    initialContext: z.ZodOptional<z.ZodString>;
                     rootSessionId: z.ZodOptional<z.ZodString>;
                     phase: z.ZodString;
                     pausedFrom: z.ZodOptional<z.ZodString>;
@@ -48,13 +50,21 @@ export declare const TYPERT_REMOTE: {
                     artifacts: z.ZodDefault<z.ZodArray<z.ZodUnknown>>;
                     skillSnapshot: z.ZodOptional<z.ZodUnknown>;
                     acceptance: z.ZodOptional<z.ZodUnknown>;
-                    tracker: z.ZodOptional<z.ZodObject<{
+                    tracker: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                         kind: z.ZodLiteral<"local">;
                         root: z.ZodString;
                         graphPath: z.ZodString;
                         graphSha256: z.ZodString;
                         publishedAt: z.ZodNumber;
-                    }, z.core.$strict>>;
+                    }, z.core.$strict>, z.ZodObject<{
+                        kind: z.ZodLiteral<"github">;
+                        repository: z.ZodString;
+                        graphPath: z.ZodString;
+                        graphSha256: z.ZodString;
+                        issueNumbers: z.ZodArray<z.ZodNumber>;
+                        issueUrls: z.ZodArray<z.ZodString>;
+                        publishedAt: z.ZodNumber;
+                    }, z.core.$strict>]>>;
                     integration: z.ZodOptional<z.ZodObject<{
                         branch: z.ZodString;
                         worktreePath: z.ZodString;
@@ -64,10 +74,14 @@ export declare const TYPERT_REMOTE: {
                     review: z.ZodOptional<z.ZodObject<{
                         candidateArtifactId: z.ZodString;
                         candidateSha256: z.ZodString;
+                        admissionArtifactId: z.ZodOptional<z.ZodString>;
+                        admissionSha256: z.ZodOptional<z.ZodString>;
                         fixedPoint: z.ZodString;
                         createdAt: z.ZodNumber;
                         status: z.ZodOptional<z.ZodString>;
+                        round: z.ZodOptional<z.ZodNumber>;
                         findings: z.ZodOptional<z.ZodArray<z.ZodUnknown>>;
+                        admissionMatrix: z.ZodOptional<z.ZodUnknown>;
                     }, z.core.$strict>>;
                     recovery: z.ZodOptional<z.ZodObject<{
                         status: z.ZodString;
@@ -127,6 +141,7 @@ export declare const TYPERT_REMOTE: {
                 title: z.ZodString;
                 workspaceId: z.ZodOptional<z.ZodString>;
                 repoRoot: z.ZodString;
+                initialContext: z.ZodOptional<z.ZodString>;
                 rootSessionId: z.ZodOptional<z.ZodString>;
                 phase: z.ZodString;
                 pausedFrom: z.ZodOptional<z.ZodString>;
@@ -141,13 +156,21 @@ export declare const TYPERT_REMOTE: {
                 artifacts: z.ZodDefault<z.ZodArray<z.ZodUnknown>>;
                 skillSnapshot: z.ZodOptional<z.ZodUnknown>;
                 acceptance: z.ZodOptional<z.ZodUnknown>;
-                tracker: z.ZodOptional<z.ZodObject<{
+                tracker: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     kind: z.ZodLiteral<"local">;
                     root: z.ZodString;
                     graphPath: z.ZodString;
                     graphSha256: z.ZodString;
                     publishedAt: z.ZodNumber;
-                }, z.core.$strict>>;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"github">;
+                    repository: z.ZodString;
+                    graphPath: z.ZodString;
+                    graphSha256: z.ZodString;
+                    issueNumbers: z.ZodArray<z.ZodNumber>;
+                    issueUrls: z.ZodArray<z.ZodString>;
+                    publishedAt: z.ZodNumber;
+                }, z.core.$strict>]>>;
                 integration: z.ZodOptional<z.ZodObject<{
                     branch: z.ZodString;
                     worktreePath: z.ZodString;
@@ -157,10 +180,14 @@ export declare const TYPERT_REMOTE: {
                 review: z.ZodOptional<z.ZodObject<{
                     candidateArtifactId: z.ZodString;
                     candidateSha256: z.ZodString;
+                    admissionArtifactId: z.ZodOptional<z.ZodString>;
+                    admissionSha256: z.ZodOptional<z.ZodString>;
                     fixedPoint: z.ZodString;
                     createdAt: z.ZodNumber;
                     status: z.ZodOptional<z.ZodString>;
+                    round: z.ZodOptional<z.ZodNumber>;
                     findings: z.ZodOptional<z.ZodArray<z.ZodUnknown>>;
+                    admissionMatrix: z.ZodOptional<z.ZodUnknown>;
                 }, z.core.$strict>>;
                 recovery: z.ZodOptional<z.ZodObject<{
                     status: z.ZodString;
@@ -207,6 +234,7 @@ export declare const TYPERT_REMOTE: {
                 schema: z.ZodObject<{
                     title: z.ZodString;
                     repoRoot: z.ZodString;
+                    initialContext: z.ZodOptional<z.ZodString>;
                     workspaceId: z.ZodOptional<z.ZodString>;
                 }, z.core.$strict>;
             };
@@ -221,6 +249,7 @@ export declare const TYPERT_REMOTE: {
                 title: z.ZodString;
                 workspaceId: z.ZodOptional<z.ZodString>;
                 repoRoot: z.ZodString;
+                initialContext: z.ZodOptional<z.ZodString>;
                 rootSessionId: z.ZodOptional<z.ZodString>;
                 phase: z.ZodString;
                 pausedFrom: z.ZodOptional<z.ZodString>;
@@ -235,13 +264,21 @@ export declare const TYPERT_REMOTE: {
                 artifacts: z.ZodDefault<z.ZodArray<z.ZodUnknown>>;
                 skillSnapshot: z.ZodOptional<z.ZodUnknown>;
                 acceptance: z.ZodOptional<z.ZodUnknown>;
-                tracker: z.ZodOptional<z.ZodObject<{
+                tracker: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     kind: z.ZodLiteral<"local">;
                     root: z.ZodString;
                     graphPath: z.ZodString;
                     graphSha256: z.ZodString;
                     publishedAt: z.ZodNumber;
-                }, z.core.$strict>>;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"github">;
+                    repository: z.ZodString;
+                    graphPath: z.ZodString;
+                    graphSha256: z.ZodString;
+                    issueNumbers: z.ZodArray<z.ZodNumber>;
+                    issueUrls: z.ZodArray<z.ZodString>;
+                    publishedAt: z.ZodNumber;
+                }, z.core.$strict>]>>;
                 integration: z.ZodOptional<z.ZodObject<{
                     branch: z.ZodString;
                     worktreePath: z.ZodString;
@@ -251,10 +288,14 @@ export declare const TYPERT_REMOTE: {
                 review: z.ZodOptional<z.ZodObject<{
                     candidateArtifactId: z.ZodString;
                     candidateSha256: z.ZodString;
+                    admissionArtifactId: z.ZodOptional<z.ZodString>;
+                    admissionSha256: z.ZodOptional<z.ZodString>;
                     fixedPoint: z.ZodString;
                     createdAt: z.ZodNumber;
                     status: z.ZodOptional<z.ZodString>;
+                    round: z.ZodOptional<z.ZodNumber>;
                     findings: z.ZodOptional<z.ZodArray<z.ZodUnknown>>;
+                    admissionMatrix: z.ZodOptional<z.ZodUnknown>;
                 }, z.core.$strict>>;
                 recovery: z.ZodOptional<z.ZodObject<{
                     status: z.ZodString;
@@ -384,6 +425,13 @@ export interface FlowRemote {
         sourceRef: string;
         handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
     }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
+    rejectAcceptance(request: {
+        flowId: string;
+        expectedRevision: number;
+        candidateArtifactId: string;
+        reason: string;
+        returnTo: 'grilling' | 'wayfinding' | 'ticketing';
+    }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
     lane(request: {
         flowId: string;
         expectedRevision: number;
@@ -439,6 +487,7 @@ export interface FlowRemote {
     startFrontier(request: {
         flowId: string;
         expectedRevision: number;
+        confirmedConcurrency: true;
         maxConcurrent?: number;
     }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
     requestReview(request: {
@@ -519,6 +568,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
             output: string;
             sourceRef: string;
             handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        rejectAcceptance: (request: {
+            flowId: string;
+            expectedRevision: number;
+            candidateArtifactId: string;
+            reason: string;
+            returnTo: 'grilling' | 'wayfinding' | 'ticketing';
         }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
         lane: (request: {
             flowId: string;
@@ -654,6 +710,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
             output: string;
             sourceRef: string;
             handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        'mattSkillsFlow/rejectAcceptance': (request: {
+            flowId: string;
+            expectedRevision: number;
+            candidateArtifactId: string;
+            reason: string;
+            returnTo: 'grilling' | 'wayfinding' | 'ticketing';
         }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
         'mattSkillsFlow/lane': (request: {
             flowId: string;
