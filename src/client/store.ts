@@ -288,7 +288,7 @@ export class FlowUiStore {
     this.state = { ...this.state, busy: true, error: undefined }
     this.emit()
     try {
-      const result = await this.remote.startFrontier({ flowId: flow.id, expectedRevision: flow.revision, ...(maxConcurrent === undefined ? {} : { maxConcurrent }) })
+      const result = await this.remote.startFrontier({ flowId: flow.id, expectedRevision: flow.revision, confirmedConcurrency: true, ...(maxConcurrent === undefined ? {} : { maxConcurrent }) })
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       this.state = { ...this.state, busy: false, flows: this.state.flows.map(item => item.id === flow.id ? result.value : item) }
     } catch (error) {
@@ -310,11 +310,12 @@ export class FlowUiStore {
     this.emit()
   }
 
-  async disposeFinding(flow: FlowRecord, findingId: string): Promise<void> {
+  async disposeFinding(flow: FlowRecord, findingId: string, kind: 'fixed' | 'rejected' | 'deferred' = 'rejected'): Promise<void> {
     this.state = { ...this.state, busy: true, error: undefined }
     this.emit()
     try {
-      const result = await this.remote.disposeFinding({ flowId: flow.id, expectedRevision: flow.revision, findingId, kind: 'rejected', reason: '已由人工核对，作为当前候选的已知偏差记录。' })
+      const reason = kind === 'fixed' ? '已完成修复，要求重新冻结候选并复审。' : kind === 'deferred' ? '已记录为延期项，需由负责人后续处理。' : '已由人工核对，作为当前候选的已知偏差记录。'
+      const result = await this.remote.disposeFinding({ flowId: flow.id, expectedRevision: flow.revision, findingId, kind, reason })
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       this.state = { ...this.state, busy: false, flows: this.state.flows.map(item => item.id === flow.id ? result.value : item) }
     } catch (error) {
