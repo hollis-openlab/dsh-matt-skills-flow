@@ -36,7 +36,8 @@ export class ArtifactStore {
   /** Write bytes atomically and return immutable metadata. */
   async put(input: ArtifactWrite): Promise<ArtifactRecord> {
     if (input.bytes.byteLength > this.maxBytes) throw new Error(`ARTIFACT_TOO_LARGE: ${input.bytes.byteLength} > ${this.maxBytes}`)
-    const bytes = Buffer.from(input.bytes)
+    const bytes = redactArtifactBytes(input.mediaType, input.bytes)
+    if (bytes.byteLength > this.maxBytes) throw new Error(`ARTIFACT_TOO_LARGE: ${bytes.byteLength} > ${this.maxBytes}`)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const relativePath = join('sha256', sha256.slice(0, 2), sha256)
     const target = this.resolveOwned(relativePath)
@@ -68,6 +69,17 @@ export class ArtifactStore {
     if (containment.startsWith('..') || containment.includes(`..${requireSeparator()}`)) throw new Error('ARTIFACT_PATH_ESCAPE: artifact path leaves owned root')
     return target
   }
+}
+
+export function redactArtifactBytes(mediaType: string, input: Uint8Array): Buffer {
+  if (!mediaType.includes('json') && !mediaType.startsWith('text/')) return Buffer.from(input)
+  const text = Buffer.from(input).toString('utf8')
+  const redacted = text
+    .replace(/("?(?:DEEPSEEK_API_KEY|VOLCENGINE_API_KEY|GITHUB_TOKEN|OPENAI_API_KEY)"?\s*:\s*)"[^"]*"/gi, '$1"[REDACTED]"')
+    .replace(/((?:DEEPSEEK_API_KEY|VOLCENGINE_API_KEY|GITHUB_TOKEN|OPENAI_API_KEY)\s*=\s*)[^\s,}]+/gi, '$1[REDACTED]')
+    .replace(/\b(?:ghp|github_pat|sk)-[A-Za-z0-9_\-]{16,}\b/g, '[REDACTED_TOKEN]')
+    .replace(/(Authorization\s*:\s*Bearer\s+)[^\s,}]+/gi, '$1[REDACTED]')
+  return Buffer.from(redacted, 'utf8')
 }
 
 function requireSeparator(): string {

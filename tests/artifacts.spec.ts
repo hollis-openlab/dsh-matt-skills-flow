@@ -28,4 +28,14 @@ describe('ArtifactStore', () => {
     await expect(store.put({ kind: 'ticket', mediaType: 'text/plain', bytes: Buffer.from('too long') })).rejects.toThrow('ARTIFACT_TOO_LARGE')
     expect(() => new ArtifactStore('/', 2)).toThrow('ARTIFACT_ROOT_INVALID')
   })
+
+  it('redacts credential-shaped values before hashing and persistence', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'matt-flow-artifacts-'))
+    roots.push(root)
+    const store = new ArtifactStore(root, 1024)
+    const artifact = await store.put({ kind: 'review', mediaType: 'application/json', bytes: Buffer.from('{"DEEPSEEK_API_KEY":"sk-secret-value-1234567890","note":"ok"}') })
+    const stored = (await store.read(artifact)).toString('utf8')
+    expect(stored).toContain('[REDACTED]')
+    expect(stored).not.toContain('sk-secret-value-1234567890')
+  })
 })
