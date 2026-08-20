@@ -282,10 +282,13 @@ export interface FlowRecord {
   readonly activities?: readonly ActivityRecord[]
   readonly artifacts: readonly ArtifactRecord[]
   readonly tracker?: {
-    readonly kind: 'local'
-    readonly root: string
+    readonly kind: 'local' | 'github'
+    readonly root?: string
+    readonly repository?: string
     readonly graphPath: string
     readonly graphSha256: string
+    readonly issueNumbers?: readonly number[]
+    readonly issueUrls?: readonly string[]
     readonly publishedAt: number
   }
   readonly integration?: {
@@ -392,7 +395,10 @@ export const flowRecordSchema = z.object({
     id: z.string(), kind: z.enum(['decision', 'ticket', 'lane', 'packet', 'review', 'spec', 'export', 'acceptance']), mediaType: z.string(), sha256: z.string(),
     size: z.number().int().nonnegative(), relativePath: z.string(), createdAt: z.number(),
   }).strict()).default([]),
-  tracker: z.object({ kind: z.literal('local'), root: z.string(), graphPath: z.string(), graphSha256: z.string(), publishedAt: z.number() }).strict().optional(),
+  tracker: z.union([
+    z.object({ kind: z.literal('local'), root: z.string(), graphPath: z.string(), graphSha256: z.string(), publishedAt: z.number() }).strict(),
+    z.object({ kind: z.literal('github'), repository: z.string(), graphPath: z.string(), graphSha256: z.string(), issueNumbers: z.array(z.number().int().positive()), issueUrls: z.array(z.string().url()), publishedAt: z.number() }).strict(),
+  ]).optional(),
   integration: z.object({ branch: z.string(), worktreePath: z.string(), baseCommit: z.string(), headCommit: z.string() }).strict().optional(),
   skillSnapshot: z.object({
     status: z.enum(['missing', 'ready', 'unknown']),

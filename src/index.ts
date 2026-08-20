@@ -20,7 +20,7 @@ import type { FlowRecord } from './domain.ts'
 import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
 import { FlowRepository } from './storage.ts'
 import { ArtifactStore } from './artifacts.ts'
-import { LocalTracker } from './tracker.ts'
+import { GitHubTracker, LocalTracker, type TrackerAdapter } from './tracker.ts'
 import { GitRunner } from './git.ts'
 import { continueActionFor, parseMattFlowCommand } from './commands.ts'
 
@@ -28,6 +28,8 @@ export const name = 'dsh-matt-skills-flow'
 export const inject = ['agentDefaultModel', 'agentPresets', 'agents', 'commands', 'skills', 'storageDomain', 'subagents', 'subprocess', 'workspaceRegistry']
 
 export interface MattSkillsFlowConfig {
+  readonly trackerKind: 'local' | 'github'
+  readonly githubRepository?: string
   readonly defaultMaxConcurrentLanes: number
   readonly hardMaxConcurrentLanes: number
   readonly worktreeRootName: string
@@ -45,6 +47,8 @@ export interface MattSkillsFlowConfig {
 }
 
 const DEFAULT_CONFIG: MattSkillsFlowConfig = {
+  trackerKind: 'local',
+  githubRepository: '',
   defaultMaxConcurrentLanes: 1,
   hardMaxConcurrentLanes: 4,
   worktreeRootName: '.dsh-worktrees/matt-flow',
@@ -66,6 +70,8 @@ const DEFAULT_CONFIG: MattSkillsFlowConfig = {
 }
 
 export const Config: z<MattSkillsFlowConfig> = z.object({
+  trackerKind: z.union([z.const('local'), z.const('github')]).default(DEFAULT_CONFIG.trackerKind),
+  githubRepository: z.string().default(DEFAULT_CONFIG.githubRepository ?? ''),
   defaultMaxConcurrentLanes: z.number().step(1).min(1).default(DEFAULT_CONFIG.defaultMaxConcurrentLanes),
   hardMaxConcurrentLanes: z.number().step(1).min(1).default(DEFAULT_CONFIG.hardMaxConcurrentLanes),
   worktreeRootName: z.string().default(DEFAULT_CONFIG.worktreeRootName),
@@ -248,7 +254,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
   private readonly repository: FlowRepository
   private readonly workspaceRegistry: WorkspaceRegistry
   private readonly artifactStore: ArtifactStore
-  private readonly tracker: LocalTracker
+  private readonly tracker: TrackerAdapter
   private readonly git: GitRunner
   private readonly flowHandles = new Map<FlowId, { dispose(): Promise<void> }>()
   private readonly reviewHandles = new Map<FlowId, AgentHandle>()
@@ -260,7 +266,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     this.repository = new FlowRepository(ctx)
     this.workspaceRegistry = ctx.workspaceRegistry
     this.artifactStore = new ArtifactStore(this.config.artifactRoot, this.config.maxArtifactBytes)
-    this.tracker = new LocalTracker()
+    this.tracker = this.config.trackerKind === 'github' ? new GitHubTracker(ctx.subprocess, this.config.githubRepository) : new LocalTracker()
     this.git = new GitRunner(ctx.subprocess)
   }
 
@@ -783,11 +789,16 @@ export class MattSkillsFlowService extends TypertRemoteService {
       if (timedOut) return
       if (result.stopReason !== 'completed') throw new Error('LANE_RESULT_INVALID: stopReason=' + result.stopReason)
       const parsed = parseLaneResult(result.structured)
-      const commit = parsed.status === 'completed' ? parsed.commit ?? await this.git.head(lane.worktreePath ?? '') : undefined
-      if (parsed.status === 'completed' && (commit === undefined || lane.baseCommit === undefined || !(await this.git.isAncestor(lane.worktreePath ?? '', lane.baseCommit, commit)))) throw new Error('LANE_COMMIT_INVALID: completed Lane must return a commit based on its Task Packet base')
+      const actualCommit = parsed.status === 'completed' ? await this.git.head(lane.worktreePath ?? '') : undefined
+      if (parsed.status === 'completed' && (actualCommit === undefined || lane.baseCommit === undefined || !(await this.git.isAncestor(lane.worktreePath ?? '', lane.baseCommit, actualCommit)))) throw new Error('LANE_COMMIT_INVALID: completed Lane worktree must contain a commit based on its Task Packet base')
+      if (parsed.status === 'completed' && parsed.commit !== undefined && actualCommit !== undefined && !actualCommit.startsWith(parsed.commit) && !parsed.commit.startsWith(actualCommit)) throw new Error(`LANE_COMMIT_MISMATCH: Agent reported ${parsed.commit}, but the Lane worktree is at ${actualCommit}`)
+      const commit = actualCommit
       const resultWithCommit = commit === undefined ? parsed : { ...parsed, commit }
       const receipt = await this.artifactStore.put({ kind: 'lane', mediaType: 'application/json', bytes: Buffer.from(JSON.stringify({ schema: 'dsh-matt-skills-flow/lane-receipt/v1', laneId: lane.id, packetSha256: lane.packetSha256, result: resultWithCommit }), 'utf8') })
-      await this.finishLane(flowId, lane.id, parsed.status, parsed.summary, receipt, parsed.question, commit)
+      const summary = parsed.status === 'completed' && commit !== undefined && lane.baseCommit !== undefined
+        ? `Host verified Lane worktree HEAD ${commit} is based on ${lane.baseCommit}; the Agent report is retained in the Lane Receipt.`
+        : parsed.summary
+      await this.finishLane(flowId, lane.id, parsed.status, summary, receipt, parsed.question, commit)
     } catch (error) {
       await this.finishLane(flowId, lane.id, 'failed', error instanceof Error ? error.message : String(error))
     } finally {
@@ -825,11 +836,25 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     const completed = current.lanes.filter(lane => lane.status === 'integrated')
     if (completed.length === 0) throw new Error('REVIEW_ADMISSION_FAILED: no integrated Lane Receipt is available')
-    const candidateCommit = (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
-    const fixedPoint = completed.map(lane => lane.resultSha256 ?? '').join(',')
+    const candidateRoot = current.integration?.worktreePath ?? current.repoRoot
+    const candidateCommit = current.integration === undefined
+      ? (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
+      : await this.git.head(candidateRoot)
+    const baseCommit = current.integration?.baseCommit ?? candidateCommit
+    const changedFiles = await this.git.changedFiles(candidateRoot, baseCommit, candidateCommit)
+    const fixedPoint = createHash('sha256').update(JSON.stringify({ candidateCommit, laneResults: completed.map(lane => lane.resultSha256 ?? '') })).digest('hex')
     const candidate = await this.artifactStore.put({
       kind: 'review', mediaType: 'application/json',
-      bytes: Buffer.from(JSON.stringify({ schema: 'dsh-matt-skills-flow/review-candidate/v1', flowId: current.id, fixedPoint, tickets: current.tickets, decisions: current.decisions, lanes: completed }), 'utf8'),
+      bytes: Buffer.from(JSON.stringify({
+        schema: 'dsh-matt-skills-flow/review-candidate/v1', flowId: current.id, fixedPoint, candidateCommit, baseCommit, changedFiles,
+        integrationCommit: current.integration?.headCommit ?? candidateCommit,
+        integrationBranch: current.integration?.branch,
+        integrationWorktreePath: current.integration?.worktreePath,
+        laneCommits: completed.map(lane => ({ laneId: lane.id, ticketId: lane.ticketId, commit: lane.commit, baseCommit: lane.baseCommit })),
+        specSha256: current.spec?.sha256, graphSha256: current.tracker?.graphSha256,
+        decisionLedgerSha256: current.artifacts.find(artifact => artifact.kind === 'decision')?.sha256,
+        tickets: current.tickets, decisions: current.decisions, lanes: completed,
+      }), 'utf8'),
     })
     return await this.repository.update(flowId, request.expectedRevision, record => ({
       ...record,
@@ -855,7 +880,10 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current.acceptance?.status !== 'ready' || current.acceptance.candidateCommit === undefined) throw new Error('ACCEPTANCE_GATE_BLOCKED: candidate is not ready for human acceptance')
     if ((current.review.findings ?? []).some(finding => finding.severity !== 'note' && finding.disposition === undefined)) throw new Error('ACCEPTANCE_GATE_BLOCKED: unresolved review findings remain')
     if (current.questions.some(question => question.status === 'pending')) throw new Error('ACCEPTANCE_GATE_BLOCKED: unresolved Questions remain')
-    const head = (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
+    const candidateRoot = current.integration?.worktreePath ?? current.repoRoot
+    const head = current.integration === undefined
+      ? (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
+      : await this.git.head(candidateRoot)
     if (head !== current.acceptance.candidateCommit) throw new Error(`ACCEPTANCE_STALE_CANDIDATE: expected ${current.acceptance.candidateCommit}, current ${head}`)
     const receipt = await this.artifactStore.put({
       kind: 'acceptance', mediaType: 'application/json',
@@ -1110,7 +1138,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
         toolFilter: { allow: [] },
         persona: `You are a read-only ${axis} reviewer. Never edit files. Return only structured findings.`,
         outputSchema: { type: 'object', properties: { findings: { type: 'array', items: { type: 'object', properties: { severity: { type: 'string', enum: ['blocking', 'warning', 'note'] }, title: { type: 'string' }, explanation: { type: 'string' } }, required: ['severity', 'title', 'explanation'], additionalProperties: false } } }, required: ['findings'], additionalProperties: false },
-        prompt: [{ type: 'text', text: `Review this immutable candidate on the ${axis} axis. Do not edit files or use tools. Return exactly one JSON object with a findings array, at most three concise findings. Do not narrate your process. An empty array is valid. Candidate:\n${candidate}` }],
+        prompt: [{ type: 'text', text: `Review this immutable candidate on the ${axis} axis. Do not edit files or use tools. Return exactly one JSON object with a findings array, at most three concise findings. Do not narrate your process. Treat integrationCommit, integrationBranch, integrationWorktreePath, and laneCommits as the recorded provenance chain; report a provenance finding only when those fields are missing or internally inconsistent, not merely because the integration commit differs from an individual Lane commit. Lane resultSummary values are Host-generated summaries; do not infer a different commit from free-form Agent receipt text. Candidate:\n${candidate}` }],
       })
       const result = await Promise.race([run.result, timeout])
       if (result.stopReason !== 'completed') throw new Error(`REVIEW_RESULT_INVALID: stopReason=${result.stopReason}`)

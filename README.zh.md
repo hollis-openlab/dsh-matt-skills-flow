@@ -7,8 +7,9 @@ Matt Skills 是一个非官方 DeepSeek Harness 插件，把 [mattpocock/skills]
 ## 功能
 
 - 创建 Flow 时记录已安装 Matt Skills 及其内容摘要。
-- 持久化并支持 supersede 决策，再生成和批准 Spec。
+- 持久化决策并支持明确替代旧决策，再生成和批准 Spec。
 - 发布依赖感知的 Ticket Graph，预览可执行 Frontier。
+- Ticket Graph 默认发布到仓库本地 Markdown；Host 配置选择 `trackerKind: github` 且 `gh` 已登录时，也可以按依赖顺序创建 GitHub Issues。
 - 从 Flow 自有的 integration 分支创建隔离 Lane 分支和 Worktree。
 - 运行受限的 Lane Agent，把阻塞 Question 回收到根会话，并用新的 packet 摘要重试。
 - 按顺序集成完成的 Lane，执行 Standards/Spec 双轴 Review，并要求人工验收。
@@ -47,6 +48,8 @@ pnpm dsh web
 ```
 
 `/matt-flow continue` 每次最多推进一个明确的阶段边界；需求澄清、Review 和验收中的多义决策仍必须由界面明确选择。
+
+Ticket Graph 默认使用本地 tracker。Host 配置可以设置 `trackerKind: github` 和 `githubRepository: owner/name`；发布前会验证 `gh` 登录状态，只创建对应的 Issues，不执行其他 GitHub 写操作。
 
 ## 安全边界
 

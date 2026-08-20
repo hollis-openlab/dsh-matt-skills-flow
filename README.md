@@ -9,6 +9,7 @@ It keeps the current phase, installed Skill snapshot, Decisions, Specs, Ticket d
 - Snapshot the installed Matt Skills and their content digests at Flow creation.
 - Record and supersede Decisions before generating and approving a Spec.
 - Publish a dependency-aware Ticket Graph and preview its executable Frontier.
+- Publish the graph to repository-local Markdown by default, or to GitHub Issues when the Host config selects `trackerKind: github` and an authenticated `gh` CLI is available.
 - Create isolated Lane branches and worktrees from a Flow-owned integration branch.
 - Run bounded Lane Agents, route blocked Questions back to the root session, and retry with a new packet digest.
 - Integrate completed Lanes sequentially, run two-axis Standards/Spec review, and require human acceptance.
@@ -47,6 +48,8 @@ The same lifecycle is available from an active session:
 ```
 
 `/matt-flow continue` performs at most one unambiguous phase transition. Ambiguous planning, review, and acceptance decisions remain explicit UI actions.
+
+Ticket Graph publication is local by default. A Host configuration may set `trackerKind: github` and `githubRepository: owner/name`; publication verifies `gh` authentication and creates Issues in dependency order. The plugin never performs other GitHub mutations.
 
 ## Safety
 
