@@ -71,6 +71,10 @@ describe('Flow domain', () => {
     }
     expect(frontierFor(flow, 2).tickets).toEqual(['ticket-b'])
     expect(frontierFor({ ...flow, lanes: [{ id: 'lane-b', ticketId: 'ticket-b', status: 'ready' as const, updatedAt: 100 }] }, 2).tickets).toEqual(['ticket-b'])
+    expect(frontierFor({ ...flow, tickets: [
+      { id: 'ticket-c', title: 'Third', status: 'open' as const, blockedBy: [], dependsOn: [] },
+      { id: 'ticket-d', title: 'Fourth', status: 'open' as const, blockedBy: [], dependsOn: [] },
+    ] }, 1).tickets).toEqual(['ticket-c'])
   })
 
   it('rejects Ticket Graph cycles before publication', () => {
