@@ -428,9 +428,8 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (transition === undefined) throw new Error(`FLOW_INVALID_TRANSITION: ${current.phase} cannot accept action ${action}`)
     const gate = evaluateTransitionGate(current, action)
     if (gate.kind !== 'pass') throw new Error(`FLOW_GATE_BLOCKED: ${gate.kind === 'blocked' ? gate.code : gate.gate}: ${gate.message}`)
-    const skill = current.phase === 'intake' && transition.to === 'grilling'
-      ? await this.loadSkill('grill-with-docs', current.repoRoot, root)
-      : undefined
+    const skillName = action === 'start-bug' ? 'diagnosing-bugs' : action === 'start-large-effort' ? 'wayfinder' : current.phase === 'intake' && transition.to === 'grilling' ? 'grill-with-docs' : undefined
+    const skill = skillName === undefined ? undefined : await this.loadSkill(skillName, current.repoRoot, root)
     const next = await this.repository.update(flowId, request.expectedRevision, currentRecord => {
       if (currentRecord.phase === 'accepted' || currentRecord.phase === 'aborted') throw new Error(`FLOW_TERMINAL: ${currentRecord.phase}`)
       const currentTransition = transitionFor(currentRecord, action)
