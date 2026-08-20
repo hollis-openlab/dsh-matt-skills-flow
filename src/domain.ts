@@ -302,6 +302,7 @@ export interface FlowRecord {
     readonly fixedPoint: string
     readonly createdAt: number
     readonly status?: 'frozen' | 'running' | 'complete' | 'failed'
+    readonly round?: number
     readonly findings?: readonly ReviewFinding[]
   }
   readonly recovery?: {
@@ -407,7 +408,7 @@ export const flowRecordSchema = z.object({
   }).strict().optional(),
   review: z.object({
     candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(),
-    status: z.enum(['frozen', 'running', 'complete', 'failed']).optional(),
+    status: z.enum(['frozen', 'running', 'complete', 'failed']).optional(), round: z.number().int().nonnegative().optional(),
     findings: z.array(z.object({ id: z.string(), axis: z.enum(['standards', 'spec']), severity: z.enum(['blocking', 'warning', 'note']), title: z.string(), explanation: z.string(), disposition: z.object({ kind: z.enum(['fixed', 'rejected', 'deferred']), reason: z.string() }).strict().optional() }).strict()).optional(),
   }).strict().optional(),
   spec: z.object({ status: z.enum(['draft', 'approved', 'stale']), artifactId: z.string(), sha256: z.string(), createdAt: z.number(), approvedAt: z.number().optional() }).strict().optional(),

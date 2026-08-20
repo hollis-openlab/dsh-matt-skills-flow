@@ -213,6 +213,7 @@ export interface FlowRecord {
         readonly fixedPoint: string;
         readonly createdAt: number;
         readonly status?: 'frozen' | 'running' | 'complete' | 'failed';
+        readonly round?: number;
         readonly findings?: readonly ReviewFinding[];
     };
     readonly recovery?: {
@@ -460,6 +461,7 @@ export declare const flowRecordSchema: z.ZodObject<{
             frozen: "frozen";
             complete: "complete";
         }>>;
+        round: z.ZodOptional<z.ZodNumber>;
         findings: z.ZodOptional<z.ZodArray<z.ZodObject<{
             id: z.ZodString;
             axis: z.ZodEnum<{
