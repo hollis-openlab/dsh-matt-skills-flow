@@ -18,6 +18,8 @@ export interface MattSkillsFlowConfig {
     readonly laneMaxTokens: number;
     readonly laneMaxDepth: number;
     readonly reviewTimeoutMs: number;
+    readonly defaultMaxReviewRounds: number;
+    readonly hardMaxReviewRounds: number;
     readonly reviewAgentPreset: string;
 }
 export declare const Config: z<MattSkillsFlowConfig>;

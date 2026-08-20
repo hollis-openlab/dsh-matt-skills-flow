@@ -11,7 +11,7 @@ const flowSchema = z.object({
   skillSnapshot: z.unknown().optional(), acceptance: z.unknown().optional(),
   tracker: z.object({ kind: z.literal('local'), root: z.string(), graphPath: z.string(), graphSha256: z.string(), publishedAt: z.number() }).strict().optional(),
   integration: z.object({ branch: z.string(), worktreePath: z.string(), baseCommit: z.string(), headCommit: z.string() }).strict().optional(),
-  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
+  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
   recovery: z.object({ status: z.string(), reason: z.string().optional(), observedAt: z.number() }).strict().optional(),
   spec: z.object({ status: z.string(), artifactId: z.string(), sha256: z.string(), createdAt: z.number(), approvedAt: z.number().optional() }).strict().optional(),
   export: z.object({ artifactId: z.string(), sha256: z.string(), createdAt: z.number() }).strict().optional(),

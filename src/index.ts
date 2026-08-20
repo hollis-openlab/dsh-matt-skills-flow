@@ -39,6 +39,8 @@ export interface MattSkillsFlowConfig {
   readonly laneMaxTokens: number
   readonly laneMaxDepth: number
   readonly reviewTimeoutMs: number
+  readonly defaultMaxReviewRounds: number
+  readonly hardMaxReviewRounds: number
   readonly reviewAgentPreset: string
 }
 
@@ -58,6 +60,8 @@ const DEFAULT_CONFIG: MattSkillsFlowConfig = {
   laneMaxTokens: 8192,
   laneMaxDepth: 1,
   reviewTimeoutMs: 4 * 60 * 1000,
+  defaultMaxReviewRounds: 1,
+  hardMaxReviewRounds: 2,
   reviewAgentPreset: 'minimal',
 }
 
@@ -73,6 +77,8 @@ export const Config: z<MattSkillsFlowConfig> = z.object({
   laneMaxTokens: z.number().step(1).min(1024).default(DEFAULT_CONFIG.laneMaxTokens),
   laneMaxDepth: z.number().step(1).min(0).default(DEFAULT_CONFIG.laneMaxDepth),
   reviewTimeoutMs: z.number().step(1).min(1000).default(DEFAULT_CONFIG.reviewTimeoutMs),
+  defaultMaxReviewRounds: z.number().step(1).min(1).default(DEFAULT_CONFIG.defaultMaxReviewRounds),
+  hardMaxReviewRounds: z.number().step(1).min(1).default(DEFAULT_CONFIG.hardMaxReviewRounds),
   reviewAgentPreset: z.string().default(DEFAULT_CONFIG.reviewAgentPreset),
 })
 
@@ -254,6 +260,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (this.config.defaultMaxConcurrentLanes > this.config.hardMaxConcurrentLanes) {
       throw new Error('defaultMaxConcurrentLanes cannot exceed hardMaxConcurrentLanes')
     }
+    if (this.config.defaultMaxReviewRounds > this.config.hardMaxReviewRounds) throw new Error('defaultMaxReviewRounds cannot exceed hardMaxReviewRounds')
     await this.repository.open()
     for (const flow of this.repository.list()) {
       if (!flow.lanes.some(lane => lane.status === 'running') && flow.review?.status !== 'running') continue
@@ -822,7 +829,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
       revision: record.revision + 1,
       phase: 'ready-for-acceptance',
       nextAction: nextActionFor('ready-for-acceptance'),
-      review: { candidateArtifactId: candidate.id, candidateSha256: candidate.sha256, fixedPoint, createdAt: Date.now(), status: 'frozen' as const, findings: [] },
+      review: { candidateArtifactId: candidate.id, candidateSha256: candidate.sha256, fixedPoint, createdAt: Date.now(), status: 'frozen' as const, round: 0, findings: [] },
       acceptance: { status: 'ready' as const, candidateCommit },
       artifacts: [...record.artifacts, candidate],
       updatedAt: Date.now(),
@@ -910,6 +917,8 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     const hasBlockingFindings = (current.review?.findings ?? []).some(finding => finding.severity !== 'note')
     if (current.review === undefined || (current.review.status !== undefined && current.review.status !== 'frozen' && current.review.status !== 'failed' && !(current.review.status === 'complete' && hasBlockingFindings))) throw new Error('REVIEW_ADMISSION_FAILED: freeze a candidate before review')
+    const reviewRound = current.review?.round ?? 0
+    if (current.review?.status === 'complete' && hasBlockingFindings && reviewRound >= this.config.defaultMaxReviewRounds) throw new Error(`REVIEW_ROUNDS_EXCEEDED: maximum remediation rounds ${this.config.defaultMaxReviewRounds} reached`)
     const artifact = current.artifacts.find(item => item.id === current.review?.candidateArtifactId)
     if (artifact === undefined) throw new Error('REVIEW_ADMISSION_FAILED: candidate artifact is missing')
     const root = await this.rootForFlow(current)
@@ -918,7 +927,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const running = await this.repository.update(flowId, request.expectedRevision, record => ({
       ...record,
       revision: record.revision + 1,
-      review: record.review === undefined ? undefined : { ...record.review, status: 'running' as const },
+      review: record.review === undefined ? undefined : { ...record.review, status: 'running' as const, round: reviewRound + 1 },
       updatedAt: Date.now(),
     }))
     void this.driveReview(flowId, running, root, candidate)
