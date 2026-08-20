@@ -40,7 +40,7 @@ const integrateLaneRequestSchema = z.object({ flowId: z.string(), expectedRevisi
 const answerQuestionRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), questionId: z.string().min(1), answer: z.string().min(1) }).strict()
 const resumeFlowRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive() }).strict()
 const frontierRequestSchema = z.object({ flowId: z.string() }).strict()
-const startFrontierRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), maxConcurrent: z.number().int().positive().optional() }).strict()
+const startFrontierRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), confirmedConcurrency: z.literal(true), maxConcurrent: z.number().int().positive().optional() }).strict()
 const reviewRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive() }).strict()
 const disposeFindingRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), findingId: z.string().min(1), kind: z.enum(['fixed', 'rejected', 'deferred']), reason: z.string().min(1) }).strict()
 const specRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive() }).strict()
@@ -267,7 +267,7 @@ export interface FlowRemote {
   answerQuestion(request: { flowId: string; expectedRevision: number; questionId: string; answer: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   resume(request: { flowId: string; expectedRevision: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   previewFrontier(request: { flowId: string }, signal?: AbortSignal): Promise<RemoteResult<import('./domain.ts').FrontierPlan>>
-  startFrontier(request: { flowId: string; expectedRevision: number; maxConcurrent?: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  startFrontier(request: { flowId: string; expectedRevision: number; confirmedConcurrency: true; maxConcurrent?: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   requestReview(request: { flowId: string; expectedRevision: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   disposeFinding(request: { flowId: string; expectedRevision: number; findingId: string; kind: 'fixed' | 'rejected' | 'deferred'; reason: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   generateSpec(request: { flowId: string; expectedRevision: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
