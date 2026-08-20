@@ -81,7 +81,7 @@ export class LocalTracker implements TrackerAdapter {
     for (const [index, ticket] of flow.tickets.entries()) {
       const issuePath = join(publication.root, 'issues', `${String(index + 1).padStart(2, '0')}-${slug(ticket.title)}.md`)
       const issue = await readFile(issuePath, 'utf8').catch(() => undefined)
-      if (issue !== ticketBody(ticket, new Map())) drift.push(`ticket:${ticket.id}`)
+      if (issue === undefined || normalizeTicketDefinition(issue) !== normalizeTicketDefinition(ticketBody(ticket, new Map()))) drift.push(`ticket:${ticket.id}`)
     }
     return { kind: 'local', graphSha256, drift, statuses: Object.fromEntries(flow.tickets.map(ticket => [ticket.id, ticket.status])) }
   }
@@ -177,7 +177,7 @@ export class GitHubTracker implements TrackerAdapter {
       if (number === undefined) { drift.push(`ticket:${ticket.id}`); continue }
       const payload = await this.runJson<{ title: string; body: string; state: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${publication.repository}/issues/${number}`, '--jq', '{title: .title, body: .body, state: .state}'], signal)
       statuses[ticket.id] = payload.state
-      if (payload.title !== ticket.title || payload.body !== ticketBody(ticket, new Map(ordered.slice(0, index).map((item, itemIndex) => [item.id, publication.issueNumbers[itemIndex] as number])))) drift.push(`ticket:${ticket.id}`)
+      if (payload.title !== ticket.title || normalizeTicketDefinition(payload.body) !== normalizeTicketDefinition(ticketBody(ticket, new Map(ordered.slice(0, index).map((item, itemIndex) => [item.id, publication.issueNumbers[itemIndex] as number]))))) drift.push(`ticket:${ticket.id}`)
     }
     return { kind: 'github', graphSha256, drift, statuses }
   }
@@ -274,6 +274,11 @@ function ticketBody(ticket: TrackerFlow['tickets'][number], issueNumbers: Readon
   const dependencies = ticket.dependsOn.map(id => issueNumbers.get(id) === undefined ? id : `#${issueNumbers.get(id)}`).join(', ') || 'none'
   const criteria = (ticket.acceptanceCriteria ?? []).map(item => `- ${item}`).join('\n') || '- (not specified)'
   return `# ${ticket.title}\n\n- ID: ${ticket.id}\n- Status: ${ticket.status}\n- Workflow: ${ticket.workflowRole ?? 'implement'}\n- Depends on: ${dependencies}\n\n## Acceptance criteria\n${criteria}\n`
+}
+
+/** Compare tracker-owned ticket definition while allowing Flow execution status to advance independently. */
+function normalizeTicketDefinition(body: string): string {
+  return body.replace(/^- Status: .*\n/m, '')
 }
 
 function topologicalTickets(tickets: TrackerFlow['tickets']): TrackerFlow['tickets'] {
