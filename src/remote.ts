@@ -6,7 +6,7 @@ import type { FlowRecord } from './domain.ts'
 
 const flowSchema = z.object({
   schemaVersion: z.literal(1), id: z.string(), revision: z.number(), title: z.string(), workspaceId: z.string().optional(),
-  repoRoot: z.string(), rootSessionId: z.string().optional(), phase: z.string(), pausedFrom: z.string().optional(), planningReturnPhase: z.string().optional(), nextAction: z.string(), createdAt: z.number(), updatedAt: z.number(),
+  repoRoot: z.string(), initialContext: z.string().optional(), rootSessionId: z.string().optional(), phase: z.string(), pausedFrom: z.string().optional(), planningReturnPhase: z.string().optional(), nextAction: z.string(), createdAt: z.number(), updatedAt: z.number(),
   decisions: z.array(z.unknown()), tickets: z.array(z.unknown()), lanes: z.array(z.unknown()), questions: z.array(z.unknown()), artifacts: z.array(z.unknown()).default([]),
   skillSnapshot: z.unknown().optional(), acceptance: z.unknown().optional(),
   tracker: z.union([
@@ -14,13 +14,13 @@ const flowSchema = z.object({
     z.object({ kind: z.literal('github'), repository: z.string(), graphPath: z.string(), graphSha256: z.string(), issueNumbers: z.array(z.number().int().positive()), issueUrls: z.array(z.string().url()), publishedAt: z.number() }).strict(),
   ]).optional(),
   integration: z.object({ branch: z.string(), worktreePath: z.string(), baseCommit: z.string(), headCommit: z.string() }).strict().optional(),
-  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), admissionArtifactId: z.string().optional(), admissionSha256: z.string().optional(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
+  review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), admissionArtifactId: z.string().optional(), admissionSha256: z.string().optional(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional(), admissionMatrix: z.unknown().optional() }).strict().optional(),
   recovery: z.object({ status: z.string(), reason: z.string().optional(), observedAt: z.number() }).strict().optional(),
   spec: z.object({ status: z.string(), artifactId: z.string(), sha256: z.string(), createdAt: z.number(), approvedAt: z.number().optional() }).strict().optional(),
   export: z.object({ artifactId: z.string(), sha256: z.string(), createdAt: z.number() }).strict().optional(),
 }).passthrough()
 
-const createRequestSchema = z.object({ title: z.string().min(1), repoRoot: z.string().min(1), workspaceId: z.string().optional() }).strict()
+const createRequestSchema = z.object({ title: z.string().min(1), repoRoot: z.string().min(1), initialContext: z.string().optional(), workspaceId: z.string().optional() }).strict()
 const idRequestSchema = z.object({ flowId: z.string() }).strict()
 const advanceRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), action: z.string().min(1) }).strict()
 const decisionRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), question: z.string().min(1), answer: z.string().min(1) }).strict()
