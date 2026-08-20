@@ -26,11 +26,18 @@ export interface GitHubTrackerRecord {
 
 export type TrackerRecord = LocalTrackerRecord | GitHubTrackerRecord
 
-export interface TrackerAdapter {
-  publish(flow: TrackerFlow, signal?: AbortSignal): Promise<TrackerRecord>
+export interface TrackerSnapshot {
+  readonly kind: TrackerRecord['kind']
+  readonly graphSha256: string
+  readonly drift: readonly string[]
 }
 
-export class LocalTracker {
+export interface TrackerAdapter {
+  publish(flow: TrackerFlow, signal?: AbortSignal): Promise<TrackerRecord>
+  inspect(flow: TrackerFlow, publication: TrackerRecord, signal?: AbortSignal): Promise<TrackerSnapshot>
+}
+
+export class LocalTracker implements TrackerAdapter {
   async publish(flow: TrackerFlow): Promise<LocalTrackerRecord> {
     const root = resolve(flow.repoRoot, '.scratch', slug(`${flow.title}-${flow.id.slice(-8)}`))
     const graphPath = join(root, 'graph.json')
@@ -44,6 +51,19 @@ export class LocalTracker {
       await writeOwned(issuePath, Buffer.from(ticketBody(ticket, new Map()), 'utf8'))
     }
     return { kind: 'local', root, graphPath, graphSha256, publishedAt: Date.now() }
+  }
+
+  async inspect(flow: TrackerFlow, publication: LocalTrackerRecord): Promise<TrackerSnapshot> {
+    const drift: string[] = []
+    const bytes = await readFile(publication.graphPath).catch(() => undefined)
+    const graphSha256 = bytes === undefined ? '' : createHash('sha256').update(bytes).digest('hex')
+    if (graphSha256 !== publication.graphSha256) drift.push('graph')
+    for (const [index, ticket] of flow.tickets.entries()) {
+      const issuePath = join(publication.root, 'issues', `${String(index + 1).padStart(2, '0')}-${slug(ticket.title)}.md`)
+      const issue = await readFile(issuePath, 'utf8').catch(() => undefined)
+      if (issue !== ticketBody(ticket, new Map())) drift.push(`ticket:${ticket.id}`)
+    }
+    return { kind: 'local', graphSha256, drift }
   }
 }
 
@@ -85,6 +105,21 @@ export class GitHubTracker implements TrackerAdapter {
       await writeOwned(issuePath, Buffer.from(body, 'utf8'))
     }
     return { kind: 'github', repository, graphPath, graphSha256, issueNumbers: topologicalTickets(flow.tickets).map(ticket => issueNumbers.get(ticket.id) as number), issueUrls, publishedAt: Date.now() }
+  }
+
+  async inspect(flow: TrackerFlow, publication: GitHubTrackerRecord, signal?: AbortSignal): Promise<TrackerSnapshot> {
+    const drift: string[] = []
+    const bytes = await readFile(publication.graphPath).catch(() => undefined)
+    const graphSha256 = bytes === undefined ? '' : createHash('sha256').update(bytes).digest('hex')
+    if (graphSha256 !== publication.graphSha256) drift.push('graph')
+    const ordered = topologicalTickets(flow.tickets)
+    for (const [index, ticket] of ordered.entries()) {
+      const number = publication.issueNumbers[index]
+      if (number === undefined) { drift.push(`ticket:${ticket.id}`); continue }
+      const payload = await this.runJson<{ title: string; body: string }>(await this.ghExecutable, flow.repoRoot, ['api', `repos/${publication.repository}/issues/${number}`, '--jq', '{title: .title, body: .body}'], signal)
+      if (payload.title !== ticket.title || payload.body !== ticketBody(ticket, new Map(ordered.slice(0, index).map((item, itemIndex) => [item.id, publication.issueNumbers[itemIndex] as number])))) drift.push(`ticket:${ticket.id}`)
+    }
+    return { kind: 'github', graphSha256, drift }
   }
 
   private async resolveRepository(repoRoot: string, signal?: AbortSignal): Promise<string> {
