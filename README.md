@@ -7,6 +7,7 @@ It keeps the current phase, installed Skill snapshot, Decisions, Specs, Ticket d
 ## Features
 
 - Snapshot the installed Matt Skills and their content digests at Flow creation.
+- Preserve the initial goal or Bug context in the Flow and show explicit lifecycle/configuration dispositions at review admission.
 - Record and supersede Decisions before generating and approving a Spec.
 - Publish a dependency-aware Ticket Graph and preview its executable Frontier.
 - Publish the graph to repository-local Markdown by default, or to GitHub Issues when the Host config selects `trackerKind: github` and an authenticated `gh` CLI is available.
