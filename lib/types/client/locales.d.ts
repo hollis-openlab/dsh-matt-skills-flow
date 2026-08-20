@@ -68,6 +68,8 @@ export declare const zh: {
     readonly answerQuestion: "回答并重试 Lane";
     readonly pauseFlow: "暂停 Flow";
     readonly abortFlow: "中止 Flow";
+    readonly startBug: "进入 Bug 诊断";
+    readonly startLargeEffort: "进入 Wayfinder";
     readonly questionAnswerPlaceholder: "写下决定后重新运行 Lane";
     readonly candidateFrozen: "Candidate 已冻结";
     readonly acceptance: "人工验收";
@@ -189,6 +191,8 @@ export declare const en: {
     readonly answerQuestion: "Answer and retry Lane";
     readonly pauseFlow: "Pause Flow";
     readonly abortFlow: "Abort Flow";
+    readonly startBug: "Start bug diagnosis";
+    readonly startLargeEffort: "Start Wayfinder";
     readonly questionAnswerPlaceholder: "Write the decision before retrying the Lane";
     readonly candidateFrozen: "Candidate frozen";
     readonly acceptance: "Human acceptance";
