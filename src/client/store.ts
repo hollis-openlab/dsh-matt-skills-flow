@@ -131,6 +131,11 @@ export class FlowUiStore {
     await this.mutateFlow(flow, request => this.remote.completeActivity({ ...request, activityId, output, sourceRef, ...(handoff === undefined ? {} : { handoff }) }))
   }
 
+  async rejectAcceptance(flow: FlowRecord, reason: string, returnTo: 'grilling' | 'wayfinding' | 'ticketing'): Promise<void> {
+    if (flow.review === undefined) return
+    await this.mutateFlow(flow, request => this.remote.rejectAcceptance({ ...request, candidateArtifactId: flow.review?.candidateArtifactId ?? '', reason, returnTo }))
+  }
+
   async lane(flow: FlowRecord, ticketId: string): Promise<void> {
     this.state = { ...this.state, busy: true, error: undefined }
     this.emit()

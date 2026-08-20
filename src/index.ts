@@ -208,6 +208,14 @@ export interface AcceptFlowRequest {
   readonly accept: true
 }
 
+export interface RejectAcceptanceRequest {
+  readonly flowId: string
+  readonly expectedRevision: number
+  readonly candidateArtifactId: string
+  readonly reason: string
+  readonly returnTo: 'grilling' | 'wayfinding' | 'ticketing'
+}
+
 export interface CleanupLaneRequest {
   readonly flowId: string
   readonly expectedRevision: number
@@ -868,6 +876,22 @@ export class MattSkillsFlowService extends TypertRemoteService {
       artifacts: [...record.artifacts, receipt],
       updatedAt: Date.now(),
     }))
+  }
+
+  /** Record a human rejection and return the Flow to a selected earlier phase. */
+  @Remote('rejectAcceptance')
+  async rejectAcceptance(request: RejectAcceptanceRequest): Promise<FlowRecord> {
+    const reason = request.reason.trim()
+    if (reason.length === 0) throw new Error('REJECTION_REASON_REQUIRED: explain why the candidate is rejected')
+    const flowId = FlowId(request.flowId)
+    const current = this.repository.get(flowId)
+    if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
+    if (current.review?.candidateArtifactId !== request.candidateArtifactId || current.acceptance?.status !== 'ready') throw new Error('REJECTION_CANDIDATE_MISMATCH: candidate is not ready for rejection')
+    const receipt = await this.artifactStore.put({ kind: 'acceptance', mediaType: 'application/json', bytes: Buffer.from(JSON.stringify({ schema: 'dsh-matt-skills-flow/rejection/v1', flowId: current.id, candidateId: request.candidateArtifactId, reason, returnTo: request.returnTo, rejectedAt: Date.now(), rejectedBy: 'local-user' }), 'utf8') })
+    return await this.repository.update(flowId, request.expectedRevision, record => {
+      const { review: _review, ...withoutReview } = record
+      return { ...withoutReview, revision: record.revision + 1, phase: request.returnTo, nextAction: nextActionFor(request.returnTo), acceptance: { status: 'rejected' as const, candidateCommit: record.acceptance?.candidateCommit, receiptArtifactId: receipt.id }, artifacts: [...record.artifacts, receipt], updatedAt: Date.now() }
+    })
   }
 
   /** Remove one clean Lane worktree while retaining its immutable Flow evidence. */
