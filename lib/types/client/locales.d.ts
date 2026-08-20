@@ -66,6 +66,8 @@ export declare const zh: {
     readonly cleanupWorktree: "清理 Worktree";
     readonly integrateLane: "集成 Lane";
     readonly answerQuestion: "回答并重试 Lane";
+    readonly pauseFlow: "暂停 Flow";
+    readonly abortFlow: "中止 Flow";
     readonly questionAnswerPlaceholder: "写下决定后重新运行 Lane";
     readonly candidateFrozen: "Candidate 已冻结";
     readonly acceptance: "人工验收";
@@ -185,6 +187,8 @@ export declare const en: {
     readonly cleanupWorktree: "Clean up worktree";
     readonly integrateLane: "Integrate Lane";
     readonly answerQuestion: "Answer and retry Lane";
+    readonly pauseFlow: "Pause Flow";
+    readonly abortFlow: "Abort Flow";
     readonly questionAnswerPlaceholder: "Write the decision before retrying the Lane";
     readonly candidateFrozen: "Candidate frozen";
     readonly acceptance: "Human acceptance";

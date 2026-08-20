@@ -415,6 +415,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const flowId = FlowId(request.flowId)
     const current = this.repository.get(flowId)
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
+    if (action === 'pause' && current.lanes.some(lane => ['running', 'integrating'].includes(lane.status))) throw new Error('PAUSE_GATE_BLOCKED: wait for active Lane mutations to quiesce')
     const root = await this.rootForFlow(current)
     const transition = transitionFor(current, action)
     if (transition === undefined) throw new Error(`FLOW_INVALID_TRANSITION: ${current.phase} cannot accept action ${action}`)
@@ -431,15 +432,20 @@ export class MattSkillsFlowService extends TypertRemoteService {
       const planningReturnPhase = action === 'start-research' || action === 'start-prototype'
         ? currentRecord.phase === 'wayfinding' ? 'wayfinding' : currentRecord.phase === 'intake' ? 'intake' : 'grilling'
         : currentRecord.planningReturnPhase
-      return {
+      const next = {
         ...currentRecord,
         revision: currentRecord.revision + 1,
         phase: currentTransition.to,
-        ...(action === 'pause' ? { pausedFrom: currentRecord.phase } : action === 'resume' ? { pausedFrom: undefined } : {}),
         ...(planningReturnPhase === undefined ? {} : { planningReturnPhase }),
         nextAction: nextActionFor(currentTransition.to),
         updatedAt: now,
       }
+      if (action === 'pause') return { ...next, pausedFrom: currentRecord.phase }
+      if (action === 'resume') {
+        const { pausedFrom: _pausedFrom, ...withoutPausedFrom } = next
+        return withoutPausedFrom
+      }
+      return next
     })
     if (skill !== undefined && root !== undefined) await this.startPlanning(root, skill, next)
     return next
