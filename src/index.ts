@@ -808,7 +808,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
       const summary = parsed.status === 'completed' && commit !== undefined && lane.baseCommit !== undefined
         ? `Host verified Lane worktree HEAD ${commit} is based on ${lane.baseCommit}; the Agent report is retained in the Lane Receipt.`
         : parsed.summary
-      await this.finishLane(flowId, lane.id, parsed.status, summary, receipt, parsed.question, commit, { context: parsed.questionContext, options: parsed.questionOptions, sourceRefs: parsed.questionSourceRefs })
+      await this.finishLane(flowId, lane.id, parsed.status, summary, receipt, parsed.question, commit, { context: parsed.questionContext, options: parsed.questionOptions, sourceRefs: parsed.questionSourceRefs, changedFiles: parsed.changedFiles })
     } catch (error) {
       await this.finishLane(flowId, lane.id, 'failed', error instanceof Error ? error.message : String(error))
     } finally {
@@ -818,13 +818,13 @@ export class MattSkillsFlowService extends TypertRemoteService {
     }
   }
 
-  private async finishLane(flowId: FlowId, laneId: string, status: 'completed' | 'blocked' | 'failed', summary: string, receipt?: import('./artifacts.ts').ArtifactRecord, question?: string, commit?: string, questionDetails?: { context?: string; options?: string[]; sourceRefs?: string[] }): Promise<void> {
+  private async finishLane(flowId: FlowId, laneId: string, status: 'completed' | 'blocked' | 'failed', summary: string, receipt?: import('./artifacts.ts').ArtifactRecord, question?: string, commit?: string, questionDetails?: { context?: string; options?: string[]; sourceRefs?: string[]; changedFiles?: string[] }): Promise<void> {
     const current = this.repository.get(flowId)
     if (current === undefined) return
     await this.repository.update(flowId, current.revision, record => ({
       ...record,
       revision: record.revision + 1,
-      lanes: record.lanes.map(item => item.id === laneId ? { ...item, status, ...(commit === undefined ? {} : { commit }), ...(receipt === undefined ? {} : { resultArtifactId: receipt.id, resultSha256: receipt.sha256 }), resultSummary: summary, updatedAt: Date.now() } : item),
+      lanes: record.lanes.map(item => item.id === laneId ? { ...item, status, ...(commit === undefined ? {} : { commit }), ...(questionDetails?.changedFiles === undefined ? {} : { changedFiles: questionDetails.changedFiles }), ...(receipt === undefined ? {} : { resultArtifactId: receipt.id, resultSha256: receipt.sha256 }), resultSummary: summary, updatedAt: Date.now() } : item),
       tickets: status === 'completed'
         ? record.tickets.map(ticket => record.lanes.find(item => item.id === laneId)?.ticketId === ticket.id ? { ...ticket, status: 'completed' as const } : ticket)
         : status === 'failed'
@@ -1414,11 +1414,11 @@ function buildAcceptanceTrace(flow: FlowRecord, completed: readonly FlowRecord['
       criterion,
       source: `ticket:${ticket.id}`,
       productionPath: lane === undefined ? 'missing-lane' : `lane:${lane.id}:worktree`,
-      falsifyingCase: lane === undefined ? 'missing-lane-receipt' : `lane:${lane.id}:status!=integrated`,
-      observableSignal: lane?.resultArtifactId === undefined || lane.resultSha256 === undefined
+      falsifyingCase: lane === undefined ? 'missing-lane-receipt' : `lane:${lane.id}:status!=integrated-or-no-changed-file`,
+      observableSignal: lane?.resultArtifactId === undefined || lane.resultSha256 === undefined || lane.changedFiles === undefined || lane.changedFiles.length === 0
         ? 'missing-lane-receipt'
-        : `artifact:${lane.resultArtifactId}:${lane.resultSha256}`,
-      status: lane?.status === 'integrated' && lane.resultArtifactId !== undefined && lane.resultSha256 !== undefined ? 'covered' as const : 'missing' as const,
+        : `artifact:${lane.resultArtifactId}:${lane.resultSha256}:changedFiles=${lane.changedFiles.join(',')}`,
+      status: lane?.status === 'integrated' && lane.resultArtifactId !== undefined && lane.resultSha256 !== undefined && lane.changedFiles !== undefined && lane.changedFiles.length > 0 ? 'covered' as const : 'missing' as const,
     }))
   })
 }
