@@ -241,6 +241,7 @@ export interface LaneRecord {
   readonly packetArtifactId?: string
   readonly packetSha256?: string
   readonly commit?: string
+  readonly changedFiles?: readonly string[]
   readonly resultArtifactId?: string
   readonly resultSha256?: string
   readonly resultSummary?: string
@@ -387,7 +388,7 @@ export function validateTicketGraph(tickets: readonly Pick<TicketRecord, 'id' | 
 const laneSchema = z.object({
   id: z.string(), ticketId: z.string(),
   status: z.enum(['preparing', 'ready', 'running', 'blocked', 'completed', 'failed', 'cancelled', 'integrating', 'integrated']),
-  branch: z.string().optional(), worktreePath: z.string().optional(), baseCommit: z.string().optional(), packetArtifactId: z.string().optional(), packetSha256: z.string().optional(), commit: z.string().optional(), resultArtifactId: z.string().optional(), resultSha256: z.string().optional(), resultSummary: z.string().optional(), cleanedAt: z.number().optional(), updatedAt: z.number(),
+  branch: z.string().optional(), worktreePath: z.string().optional(), baseCommit: z.string().optional(), packetArtifactId: z.string().optional(), packetSha256: z.string().optional(), commit: z.string().optional(), changedFiles: z.array(z.string()).optional(), resultArtifactId: z.string().optional(), resultSha256: z.string().optional(), resultSummary: z.string().optional(), cleanedAt: z.number().optional(), updatedAt: z.number(),
 }).strict()
 
 const questionSchema = z.object({
