@@ -58,11 +58,11 @@ export class FlowUiStore {
     this.emit()
   }
 
-  async create(title: string, repoRoot: string): Promise<void> {
+  async create(title: string, repoRoot: string, initialContext = ''): Promise<void> {
     this.state = { ...this.state, busy: true, error: undefined }
     this.emit()
     try {
-      const result = await this.remote.create({ title, repoRoot })
+      const result = await this.remote.create({ title, repoRoot, ...(initialContext.trim().length === 0 ? {} : { initialContext: initialContext.trim() }) })
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       this.state = { ...this.state, busy: false, showCreate: false, flows: [result.value, ...this.state.flows], selected: result.value.id }
     } catch (error) {
