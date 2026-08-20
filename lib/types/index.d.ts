@@ -45,6 +45,32 @@ export interface CreateTicketRequest {
     readonly expectedRevision: number;
     readonly title: string;
     readonly dependsOn?: readonly string[];
+    readonly acceptanceCriteria?: readonly string[];
+    readonly workflowRole?: string;
+}
+export interface UpdateTicketRequest {
+    readonly flowId: string;
+    readonly expectedRevision: number;
+    readonly ticketId: string;
+    readonly title: string;
+    readonly dependsOn?: readonly string[];
+    readonly acceptanceCriteria?: readonly string[];
+    readonly workflowRole?: string;
+}
+export interface StartActivityRequest {
+    readonly flowId: string;
+    readonly expectedRevision: number;
+    readonly kind: 'research' | 'prototype' | 'wayfinder';
+    readonly question: string;
+    readonly expectedEvidence?: string;
+}
+export interface CompleteActivityRequest {
+    readonly flowId: string;
+    readonly expectedRevision: number;
+    readonly activityId: string;
+    readonly output: string;
+    readonly sourceRef: string;
+    readonly handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
 }
 export interface PrepareLaneRequest {
     readonly flowId: string;
@@ -152,6 +178,12 @@ export declare class MattSkillsFlowService extends TypertRemoteService {
     decide(request: RecordDecisionRequest): Promise<FlowRecord>;
     /** Add one Ticket to the durable graph, rejecting unknown or duplicate dependencies. */
     ticket(request: CreateTicketRequest): Promise<FlowRecord>;
+    /** Edit one unpublished Ticket while preserving the graph's acyclic dependency contract. */
+    updateTicket(request: UpdateTicketRequest): Promise<FlowRecord>;
+    /** Start a bounded Research, Prototype, or Wayfinder activity from an explicit planning phase. */
+    startActivity(request: StartActivityRequest): Promise<FlowRecord>;
+    /** Complete a planning activity with an immutable evidence reference and optional Wayfinder handoff. */
+    completeActivity(request: CompleteActivityRequest): Promise<FlowRecord>;
     /** Reserve an isolated Lane path for one Ticket without running Git commands yet. */
     lane(request: PrepareLaneRequest): Promise<FlowRecord>;
     private ensureIntegration;

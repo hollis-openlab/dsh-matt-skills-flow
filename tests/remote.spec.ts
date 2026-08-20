@@ -3,7 +3,7 @@ import { ADVANCE_FLOW_SCHEMA, CREATE_FLOW_SCHEMA, TYPERT_REMOTE } from '../src/r
 
 describe('Matt Skills Remote', () => {
   it('exposes the Flow and Decision Ledger operations', () => {
-    expect(TYPERT_REMOTE.descriptors.map(descriptor => descriptor.method)).toEqual(['list', 'get', 'create', 'advance', 'decide', 'ticket', 'lane', 'publish', 'provisionLane', 'runLane', 'prepareAcceptance', 'accept', 'cleanup', 'integrate', 'answerQuestion', 'resume', 'previewFrontier', 'startFrontier', 'requestReview', 'disposeFinding', 'generateSpec', 'approveSpec', 'exportEvidence'])
+    expect(TYPERT_REMOTE.descriptors.map(descriptor => descriptor.method)).toEqual(['list', 'get', 'create', 'advance', 'decide', 'ticket', 'updateTicket', 'startActivity', 'completeActivity', 'lane', 'publish', 'provisionLane', 'runLane', 'prepareAcceptance', 'accept', 'cleanup', 'integrate', 'answerQuestion', 'resume', 'previewFrontier', 'startFrontier', 'requestReview', 'disposeFinding', 'generateSpec', 'approveSpec', 'exportEvidence'])
   })
 
   it('rejects incomplete create and advance requests', () => {

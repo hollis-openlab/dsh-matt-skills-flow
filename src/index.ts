@@ -17,7 +17,7 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import { renderSkillContent, type SkillDefinition } from '@deepseek-ai/dsh-skill'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FlowRecord } from './domain.ts'
-import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, flowActionSchema, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
+import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
 import { FlowRepository } from './storage.ts'
 import { ArtifactStore } from './artifacts.ts'
 import { LocalTracker } from './tracker.ts'
@@ -104,6 +104,35 @@ export interface CreateTicketRequest {
   readonly expectedRevision: number
   readonly title: string
   readonly dependsOn?: readonly string[]
+  readonly acceptanceCriteria?: readonly string[]
+  readonly workflowRole?: string
+}
+
+export interface UpdateTicketRequest {
+  readonly flowId: string
+  readonly expectedRevision: number
+  readonly ticketId: string
+  readonly title: string
+  readonly dependsOn?: readonly string[]
+  readonly acceptanceCriteria?: readonly string[]
+  readonly workflowRole?: string
+}
+
+export interface StartActivityRequest {
+  readonly flowId: string
+  readonly expectedRevision: number
+  readonly kind: 'research' | 'prototype' | 'wayfinder'
+  readonly question: string
+  readonly expectedEvidence?: string
+}
+
+export interface CompleteActivityRequest {
+  readonly flowId: string
+  readonly expectedRevision: number
+  readonly activityId: string
+  readonly output: string
+  readonly sourceRef: string
+  readonly handoff?: 'to-grilling' | 'to-spec' | 'to-tickets'
 }
 
 export interface PrepareLaneRequest {
@@ -448,22 +477,78 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const title = request.title.trim()
     if (title.length === 0) throw new Error('TICKET_INVALID: title is required')
     const dependsOn = [...new Set(request.dependsOn ?? [])]
+    const acceptanceCriteria = [...new Set((request.acceptanceCriteria ?? []).map(item => item.trim()).filter(Boolean))]
+    const workflowRole = request.workflowRole?.trim() || undefined
     const artifact = await this.artifactStore.put({
       kind: 'ticket', mediaType: 'application/json',
-      bytes: Buffer.from(JSON.stringify({ title, dependsOn }), 'utf8'),
+      bytes: Buffer.from(JSON.stringify({ title, dependsOn, acceptanceCriteria, workflowRole }), 'utf8'),
     })
     return await this.repository.update(FlowId(request.flowId), request.expectedRevision, current => {
       const known = new Set(current.tickets.map(ticket => ticket.id))
-      const unknown = dependsOn.filter(id => !known.has(id))
-      if (unknown.length > 0) throw new Error(`TICKET_DEPENDENCY_UNKNOWN: ${unknown.join(', ')}`)
       const id = `ticket-${randomUUID()}`
+      const nextTicket = { id, title, status: dependsOn.length > 0 ? 'blocked' as const : 'open' as const, blockedBy: dependsOn, dependsOn, ...(acceptanceCriteria.length === 0 ? {} : { acceptanceCriteria }), ...(workflowRole === undefined ? {} : { workflowRole }) }
+      validateTicketGraph([...current.tickets, nextTicket])
       return {
         ...current,
         revision: current.revision + 1,
-        tickets: [...current.tickets, { id, title, status: dependsOn.length > 0 ? 'blocked' as const : 'open' as const, blockedBy: dependsOn, dependsOn }],
+        tickets: [...current.tickets, nextTicket],
         artifacts: [...current.artifacts, artifact],
         updatedAt: Date.now(),
       }
+    })
+  }
+
+  /** Edit one unpublished Ticket while preserving the graph's acyclic dependency contract. */
+  @Remote('updateTicket')
+  async updateTicket(request: UpdateTicketRequest): Promise<FlowRecord> {
+    const title = request.title.trim()
+    if (title.length === 0) throw new Error('TICKET_INVALID: title is required')
+    const dependsOn = [...new Set(request.dependsOn ?? [])]
+    const acceptanceCriteria = [...new Set((request.acceptanceCriteria ?? []).map(item => item.trim()).filter(Boolean))]
+    const workflowRole = request.workflowRole?.trim() || undefined
+    return await this.repository.update(FlowId(request.flowId), request.expectedRevision, current => {
+      const ticket = current.tickets.find(item => item.id === request.ticketId)
+      if (ticket === undefined) throw new Error(`TICKET_NOT_FOUND: ${request.ticketId}`)
+      if (current.lanes.some(lane => lane.ticketId === ticket.id && ['preparing', 'ready', 'running', 'blocked', 'completed', 'integrating', 'integrated'].includes(lane.status))) throw new Error('TICKET_EDIT_BLOCKED: execution has already started for this Ticket')
+      const updated = { ...ticket, title, dependsOn, blockedBy: dependsOn, status: dependsOn.length > 0 ? 'blocked' as const : 'open' as const, ...(acceptanceCriteria.length === 0 ? {} : { acceptanceCriteria }), ...(workflowRole === undefined ? {} : { workflowRole }) }
+      const tickets = current.tickets.map(item => item.id === ticket.id ? updated : item)
+      validateTicketGraph(tickets)
+      const { tracker: _tracker, review: _review, ...withoutPublishedEvidence } = current
+      const staleSpec = current.spec?.status === 'approved' ? { ...current.spec, status: 'stale' as const } : current.spec
+      return { ...withoutPublishedEvidence, revision: current.revision + 1, tickets, ...(staleSpec === undefined ? {} : { spec: staleSpec }), updatedAt: Date.now() }
+    })
+  }
+
+  /** Start a bounded Research, Prototype, or Wayfinder activity from an explicit planning phase. */
+  @Remote('startActivity')
+  async startActivity(request: StartActivityRequest): Promise<FlowRecord> {
+    const question = request.question.trim()
+    if (question.length === 0) throw new Error('ACTIVITY_INVALID: question is required')
+    const targetPhase = request.kind === 'research' ? 'researching' : request.kind === 'prototype' ? 'prototyping' : 'wayfinding'
+    return await this.repository.update(FlowId(request.flowId), request.expectedRevision, current => {
+      if (!['intake', 'grilling', 'wayfinding', 'researching', 'prototyping'].includes(current.phase)) throw new Error(`ACTIVITY_PHASE_INVALID: ${current.phase} cannot start ${request.kind}`)
+      if ((current.activities ?? []).some(activity => activity.status === 'open')) throw new Error('ACTIVITY_ALREADY_OPEN: complete the current planning activity first')
+      const activity = { id: `activity-${randomUUID()}`, kind: request.kind, question, ...(request.expectedEvidence?.trim() ? { expectedEvidence: request.expectedEvidence.trim() } : {}), status: 'open' as const, createdAt: Date.now() }
+      return { ...current, revision: current.revision + 1, phase: targetPhase, planningReturnPhase: current.phase === 'wayfinding' ? 'wayfinding' : current.phase === 'intake' ? 'intake' : 'grilling', nextAction: request.kind === 'wayfinder' ? 'Resolve the Wayfinder map' : `Complete the ${request.kind} activity`, activities: [...(current.activities ?? []), activity], updatedAt: Date.now() }
+    })
+  }
+
+  /** Complete a planning activity with an immutable evidence reference and optional Wayfinder handoff. */
+  @Remote('completeActivity')
+  async completeActivity(request: CompleteActivityRequest): Promise<FlowRecord> {
+    const output = request.output.trim()
+    const sourceRef = request.sourceRef.trim()
+    if (output.length === 0 || sourceRef.length === 0) throw new Error('ACTIVITY_INVALID: output and sourceRef are required')
+    return await this.repository.update(FlowId(request.flowId), request.expectedRevision, current => {
+      const activity = (current.activities ?? []).find(item => item.id === request.activityId)
+      if (activity === undefined || activity.status !== 'open') throw new Error(`ACTIVITY_NOT_FOUND: ${request.activityId}`)
+      if (activity.kind === 'wayfinder' && request.handoff === undefined) throw new Error('WAYFINDER_HANDOFF_REQUIRED: choose to-grilling, to-spec, or to-tickets')
+      const handoff = request.handoff
+      const nextPhase = activity.kind === 'wayfinder'
+        ? handoff === 'to-spec' ? 'spec-review' : handoff === 'to-tickets' ? 'ticketing' : 'grilling'
+        : current.planningReturnPhase ?? 'grilling'
+      const completed = { ...activity, status: 'completed' as const, output, sourceRef, ...(handoff === undefined ? {} : { handoff }), completedAt: Date.now() }
+      return { ...current, revision: current.revision + 1, phase: nextPhase, nextAction: nextActionFor(nextPhase), activities: (current.activities ?? []).map(item => item.id === activity.id ? completed : item), updatedAt: Date.now() }
     })
   }
 
@@ -587,6 +672,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
         revision: record.revision + 1,
         integration: record.integration === undefined ? undefined : { ...record.integration, headCommit },
         lanes: record.lanes.map(item => item.id === lane.id ? { ...item, status: 'integrated' as const, commit: laneCommit, updatedAt: Date.now() } : item),
+        tickets: record.tickets.map(ticket => ticket.id === lane.ticketId ? { ...ticket, status: 'integrated' as const } : ticket),
         updatedAt: Date.now(),
       }))
     } catch (error) {
@@ -698,6 +784,11 @@ export class MattSkillsFlowService extends TypertRemoteService {
       ...record,
       revision: record.revision + 1,
       lanes: record.lanes.map(item => item.id === laneId ? { ...item, status, ...(commit === undefined ? {} : { commit }), ...(receipt === undefined ? {} : { resultArtifactId: receipt.id, resultSha256: receipt.sha256 }), resultSummary: summary, updatedAt: Date.now() } : item),
+      tickets: status === 'completed'
+        ? record.tickets.map(ticket => record.lanes.find(item => item.id === laneId)?.ticketId === ticket.id ? { ...ticket, status: 'completed' as const } : ticket)
+        : status === 'failed'
+          ? record.tickets.map(ticket => record.lanes.find(item => item.id === laneId)?.ticketId === ticket.id ? { ...ticket, status: 'failed' as const } : ticket)
+          : record.tickets,
       questions: status === 'blocked' && question !== undefined
         ? [...record.questions, { id: 'question-' + randomUUID(), ticketId: record.lanes.find(item => item.id === laneId)?.ticketId, question, status: 'pending' as const, createdAt: Date.now() }]
         : record.questions,
@@ -907,6 +998,8 @@ export class MattSkillsFlowService extends TypertRemoteService {
       `# ${current.title} Spec`, '',
       '## Confirmed decisions',
       ...active.map(decision => `- ${decision.question}: ${decision.answer}`),
+      '', '## Planning evidence',
+      ...(current.activities ?? []).filter(activity => activity.status === 'completed').map(activity => `- ${activity.kind}: ${activity.output ?? ''} (${activity.sourceRef ?? 'no reference'})`),
       '', '## Test seams', '- Focused unit tests', '- Assembled Web acceptance',
     ].join('\n') + '\n'
     const artifact = await this.artifactStore.put({ kind: 'spec', mediaType: 'text/markdown', bytes: Buffer.from(content, 'utf8') })
@@ -1035,6 +1128,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     const current = this.repository.get(flowId)
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     if (current.tickets.length === 0) throw new Error('GRAPH_INVALID: cannot publish an empty Ticket Graph')
+    validateTicketGraph(current.tickets)
     const publication = await this.tracker.publish(current)
     return await this.repository.update(flowId, request.expectedRevision, record => ({
       ...record,
