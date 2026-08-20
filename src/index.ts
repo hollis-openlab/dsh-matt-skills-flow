@@ -792,7 +792,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
         agentOptions: { maxTokens: this.config.laneMaxTokens },
         maxDepth: this.config.laneMaxDepth,
         persona: 'You are a one-shot implementation Lane Agent. Return only the requested structured result.',
-        outputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'blocked', 'failed'] }, summary: { type: 'string' }, changedFiles: { type: 'array', items: { type: 'string' } }, commit: { type: 'string' }, question: { type: 'string' } }, required: ['status', 'summary', 'changedFiles'], additionalProperties: false },
+        outputSchema: { type: 'object', properties: { status: { type: 'string', enum: ['completed', 'blocked', 'failed'] }, summary: { type: 'string' }, changedFiles: { type: 'array', items: { type: 'string' } }, commit: { type: 'string' }, question: { type: 'string' }, questionContext: { type: 'string' }, questionOptions: { type: 'array', items: { type: 'string' } }, questionSourceRefs: { type: 'array', items: { type: 'string' } } }, required: ['status', 'summary', 'changedFiles'], additionalProperties: false },
         prompt: [{ type: 'text', text: 'Implement the Ticket in the supplied Task Packet inside the exact worktree. Do not change the integration checkout. Run the required checks and commit completed work on the Lane branch. Return JSON with status, summary, changedFiles, and commit when completed. Task Packet:\n' + packet }],
       })
       const result = await run.result
@@ -808,7 +808,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
       const summary = parsed.status === 'completed' && commit !== undefined && lane.baseCommit !== undefined
         ? `Host verified Lane worktree HEAD ${commit} is based on ${lane.baseCommit}; the Agent report is retained in the Lane Receipt.`
         : parsed.summary
-      await this.finishLane(flowId, lane.id, parsed.status, summary, receipt, parsed.question, commit)
+      await this.finishLane(flowId, lane.id, parsed.status, summary, receipt, parsed.question, commit, { context: parsed.questionContext, options: parsed.questionOptions, sourceRefs: parsed.questionSourceRefs })
     } catch (error) {
       await this.finishLane(flowId, lane.id, 'failed', error instanceof Error ? error.message : String(error))
     } finally {
@@ -818,7 +818,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
     }
   }
 
-  private async finishLane(flowId: FlowId, laneId: string, status: 'completed' | 'blocked' | 'failed', summary: string, receipt?: import('./artifacts.ts').ArtifactRecord, question?: string, commit?: string): Promise<void> {
+  private async finishLane(flowId: FlowId, laneId: string, status: 'completed' | 'blocked' | 'failed', summary: string, receipt?: import('./artifacts.ts').ArtifactRecord, question?: string, commit?: string, questionDetails?: { context?: string; options?: string[]; sourceRefs?: string[] }): Promise<void> {
     const current = this.repository.get(flowId)
     if (current === undefined) return
     await this.repository.update(flowId, current.revision, record => ({
@@ -831,7 +831,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
           ? record.tickets.map(ticket => record.lanes.find(item => item.id === laneId)?.ticketId === ticket.id ? { ...ticket, status: 'failed' as const } : ticket)
           : record.tickets,
       questions: status === 'blocked' && question !== undefined
-        ? [...record.questions, { id: 'question-' + randomUUID(), ticketId: record.lanes.find(item => item.id === laneId)?.ticketId, question, status: 'pending' as const, createdAt: Date.now() }]
+        ? [...record.questions, { id: 'question-' + randomUUID(), ticketId: record.lanes.find(item => item.id === laneId)?.ticketId, question, ...(questionDetails?.context === undefined ? {} : { context: questionDetails.context }), ...(questionDetails?.options === undefined ? {} : { options: questionDetails.options }), ...(questionDetails?.sourceRefs === undefined ? {} : { sourceRefs: questionDetails.sourceRefs }), status: 'pending' as const, createdAt: Date.now() }]
         : record.questions,
       artifacts: receipt === undefined ? record.artifacts : [...record.artifacts, receipt],
       updatedAt: Date.now(),
@@ -1423,7 +1423,7 @@ function buildAcceptanceTrace(flow: FlowRecord, completed: readonly FlowRecord['
   })
 }
 
-function parseLaneResult(value: unknown): { status: 'completed' | 'blocked' | 'failed'; summary: string; changedFiles: string[]; commit?: string; question?: string } {
+function parseLaneResult(value: unknown): { status: 'completed' | 'blocked' | 'failed'; summary: string; changedFiles: string[]; commit?: string; question?: string; questionContext?: string; questionOptions?: string[]; questionSourceRefs?: string[] } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('LANE_RESULT_INVALID: structured result must be an object')
   const result = value as Record<string, unknown>
   const status = result.status
@@ -1431,10 +1431,13 @@ function parseLaneResult(value: unknown): { status: 'completed' | 'blocked' | 'f
   const changedFiles = result.changedFiles
   const commit = result.commit
   const question = result.question
-  if ((status !== 'completed' && status !== 'blocked' && status !== 'failed') || typeof summary !== 'string' || !Array.isArray(changedFiles) || changedFiles.some(file => typeof file !== 'string') || (commit !== undefined && typeof commit !== 'string') || (question !== undefined && typeof question !== 'string') || (status === 'blocked' && typeof question !== 'string')) {
+  const questionContext = result.questionContext
+  const questionOptions = result.questionOptions
+  const questionSourceRefs = result.questionSourceRefs
+  if ((status !== 'completed' && status !== 'blocked' && status !== 'failed') || typeof summary !== 'string' || !Array.isArray(changedFiles) || changedFiles.some(file => typeof file !== 'string') || (commit !== undefined && typeof commit !== 'string') || (question !== undefined && typeof question !== 'string') || (questionContext !== undefined && typeof questionContext !== 'string') || (questionOptions !== undefined && (!Array.isArray(questionOptions) || questionOptions.some(option => typeof option !== 'string'))) || (questionSourceRefs !== undefined && (!Array.isArray(questionSourceRefs) || questionSourceRefs.some(sourceRef => typeof sourceRef !== 'string'))) || (status === 'blocked' && typeof question !== 'string')) {
     throw new Error('LANE_RESULT_INVALID: status, summary, and changedFiles are required')
   }
-  return { status, summary, changedFiles: [...changedFiles] as string[], ...(commit === undefined ? {} : { commit }), ...(question === undefined ? {} : { question }) }
+  return { status, summary, changedFiles: [...changedFiles] as string[], ...(commit === undefined ? {} : { commit }), ...(question === undefined ? {} : { question }), ...(questionContext === undefined ? {} : { questionContext }), ...(questionOptions === undefined ? {} : { questionOptions: [...questionOptions] as string[] }), ...(questionSourceRefs === undefined ? {} : { questionSourceRefs: [...questionSourceRefs] as string[] }) }
 }
 
 function parseReviewFindings(value: unknown, axis: ReviewFinding['axis']): ReviewFinding[] {

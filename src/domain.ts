@@ -252,6 +252,9 @@ export interface QuestionRecord {
   readonly id: string
   readonly ticketId?: string
   readonly question: string
+  readonly context?: string
+  readonly options?: readonly string[]
+  readonly sourceRefs?: readonly string[]
   readonly status: 'pending' | 'answered' | 'dismissed'
   readonly createdAt: number
   readonly answer?: string
@@ -388,7 +391,7 @@ const laneSchema = z.object({
 }).strict()
 
 const questionSchema = z.object({
-  id: z.string(), ticketId: z.string().optional(), question: z.string(),
+  id: z.string(), ticketId: z.string().optional(), question: z.string(), context: z.string().optional(), options: z.array(z.string()).optional(), sourceRefs: z.array(z.string()).optional(),
   status: z.enum(['pending', 'answered', 'dismissed']), createdAt: z.number(), answer: z.string().optional(),
 }).strict()
 

@@ -83,4 +83,13 @@ describe('Flow domain', () => {
       { id: 'ticket-b', dependsOn: ['ticket-a'] },
     ])).toThrow('TICKET_GRAPH_CYCLE')
   })
+
+  it('persists structured blocked Question evidence', () => {
+    const flow = createFlowRecord({ id: 'flow-question' as FlowRecord['id'], title: 'Question', repoRoot: '/tmp/project', now: 100 })
+    const parsed = flowRecordSchema.parse({
+      ...flow,
+      questions: [{ id: 'question-a', ticketId: 'ticket-a', question: 'Which API?', context: 'The provider differs by deployment', options: ['REST', 'GraphQL'], sourceRefs: ['ticket-a', 'decision-b'], status: 'pending', createdAt: 100 }],
+    })
+    expect(parsed.questions[0]).toMatchObject({ options: ['REST', 'GraphQL'], sourceRefs: ['ticket-a', 'decision-b'] })
+  })
 })
