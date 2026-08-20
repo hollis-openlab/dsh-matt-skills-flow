@@ -19,7 +19,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { FlowRecord } from './domain.ts'
 import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type AcceptanceTrace, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
 import { FlowRepository } from './storage.ts'
-import { ArtifactStore } from './artifacts.ts'
+import { ArtifactStore, type ArtifactRecord } from './artifacts.ts'
 import { GitHubTracker, LocalTracker, type TrackerAdapter, type TrackerRecord } from './tracker.ts'
 import { GitRunner } from './git.ts'
 import { continueActionFor, parseMattFlowCommand } from './commands.ts'
@@ -1064,9 +1064,32 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     if (current.review?.status !== 'complete') throw new Error('REVIEW_DISPOSITION_INVALID: review is not complete')
     if (!(current.review.findings ?? []).some(finding => finding.id === request.findingId)) throw new Error(`FINDING_NOT_FOUND: ${request.findingId}`)
+    if (request.kind === 'fixed') {
+      const refreshed = await this.reFreezeCandidate(current)
+      return await this.repository.update(flowId, request.expectedRevision, record => ({
+        ...record,
+        revision: record.revision + 1,
+        phase: 'remediation',
+        nextAction: nextActionFor('remediation'),
+        review: {
+          candidateArtifactId: refreshed.candidate.id,
+          candidateSha256: refreshed.candidate.sha256,
+          admissionArtifactId: refreshed.admission.id,
+          admissionSha256: refreshed.admission.sha256,
+          fixedPoint: refreshed.fixedPoint,
+          createdAt: Date.now(),
+          status: 'frozen' as const,
+          round: (record.review?.round ?? 0) + 1,
+          findings: [],
+        },
+        acceptance: { status: 'not-ready' as const, candidateCommit: refreshed.candidateCommit },
+        artifacts: [...record.artifacts, refreshed.candidate, refreshed.admission],
+        updatedAt: Date.now(),
+      }))
+    }
     return await this.repository.update(flowId, request.expectedRevision, record => {
       const findings = (record.review?.findings ?? []).map(finding => finding.id === request.findingId ? { ...finding, disposition: { kind: request.kind, reason } } : finding)
-      const unresolved = findings.some(finding => finding.severity !== 'note' && finding.disposition === undefined)
+      const unresolved = findings.some(finding => finding.severity !== 'note' && (finding.disposition === undefined || finding.disposition.kind === 'deferred'))
       return {
         ...record,
         revision: record.revision + 1,
@@ -1079,6 +1102,57 @@ export class MattSkillsFlowService extends TypertRemoteService {
         updatedAt: Date.now(),
       }
     })
+  }
+
+  private async reFreezeCandidate(current: FlowRecord): Promise<{ candidate: ArtifactRecord; admission: ArtifactRecord; candidateCommit: string; fixedPoint: string }> {
+    if (current.review?.candidateArtifactId === undefined || current.review.admissionArtifactId === undefined) throw new Error('REMEDIATION_ADMISSION_REQUIRED: the current candidate has no admission artifact')
+    if (current.tracker === undefined) throw new Error('REMEDIATION_ADMISSION_REQUIRED: Ticket Graph publication is missing')
+    const trackerSnapshot = await this.tracker.inspect(current, current.tracker as unknown as TrackerRecord)
+    if (trackerSnapshot.drift.length > 0) throw new Error(`TRACKER_DRIFT: ${trackerSnapshot.drift.join(', ')}`)
+    const candidateRoot = current.integration?.worktreePath ?? current.repoRoot
+    const candidateCommit = current.integration === undefined
+      ? (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
+      : await this.git.head(candidateRoot)
+    if (candidateCommit === current.acceptance?.candidateCommit) throw new Error('REMEDIATION_CANDIDATE_UNCHANGED: fixed finding requires a new integration commit')
+    const baseCommit = current.integration?.baseCommit ?? candidateCommit
+    const changedFiles = await this.git.changedFiles(candidateRoot, baseCommit, candidateCommit)
+    const completed = current.lanes.filter(lane => lane.status === 'integrated')
+    const acceptanceTrace = buildAcceptanceTrace(current, completed)
+    if (acceptanceTrace.length === 0 || acceptanceTrace.some(trace => trace.status !== 'covered')) throw new Error('REMEDIATION_ADMISSION_FAILED: acceptance trace is incomplete')
+    const fixedPoint = createHash('sha256').update(JSON.stringify({ candidateCommit, laneResults: completed.map(lane => lane.resultSha256 ?? '') })).digest('hex')
+    const previous = current.artifacts.find(artifact => artifact.id === current.review?.candidateArtifactId)
+    if (previous === undefined) throw new Error('REMEDIATION_CANDIDATE_MISSING: immutable candidate artifact is unavailable')
+    const previousPayload = JSON.parse((await this.artifactStore.read(previous)).toString('utf8')) as Record<string, unknown>
+    const candidate = await this.artifactStore.put({
+      kind: 'review', mediaType: 'application/json',
+      bytes: Buffer.from(JSON.stringify({
+        ...previousPayload,
+        schema: 'dsh-matt-skills-flow/review-candidate/v1',
+        supersedesCandidateArtifactId: previous.id,
+        fixedPoint, candidateCommit, baseCommit, changedFiles,
+        integrationCommit: current.integration?.headCommit ?? candidateCommit,
+        integrationBranch: current.integration?.branch,
+        integrationWorktreePath: current.integration?.worktreePath,
+        laneCommits: completed.map(lane => ({ laneId: lane.id, ticketId: lane.ticketId, commit: lane.commit, baseCommit: lane.baseCommit })),
+        specSha256: current.spec?.sha256, graphSha256: current.tracker.graphSha256,
+        decisionLedgerSha256: current.artifacts.find(artifact => artifact.kind === 'decision')?.sha256,
+        acceptanceTrace, tickets: current.tickets, decisions: current.decisions, lanes: completed,
+      }), 'utf8'),
+    })
+    const admission = await this.artifactStore.put({
+      kind: 'review', mediaType: 'application/json',
+      bytes: Buffer.from(JSON.stringify({
+        schema: 'dsh-matt-skills-flow/review-admission/v1', flowId: current.id,
+        supersedesAdmissionArtifactId: current.review.admissionArtifactId,
+        candidateArtifactId: candidate.id, candidateSha256: candidate.sha256, candidateCommit,
+        specSha256: current.spec?.sha256, graphSha256: current.tracker.graphSha256,
+        decisionLedgerSha256: current.artifacts.find(artifact => artifact.kind === 'decision')?.sha256,
+        changedFiles, acceptanceTrace,
+        checks: completed.map(lane => ({ laneId: lane.id, receiptArtifactId: lane.resultArtifactId, resultSha256: lane.resultSha256 })),
+        knownDeferred: [],
+      }), 'utf8'),
+    })
+    return { candidate, admission, candidateCommit, fixedPoint }
   }
 
   /** Compile active Decisions into a bounded, immutable Spec draft. */
