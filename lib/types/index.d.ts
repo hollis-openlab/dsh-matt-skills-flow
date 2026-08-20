@@ -3,10 +3,12 @@ import { Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import type { FlowRecord } from './domain.ts';
-import { type FrontierPlan } from './domain.ts';
+import { type AdmissionMatrix, type FrontierPlan } from './domain.ts';
 export declare const name = "dsh-matt-skills-flow";
 export declare const inject: string[];
 export interface MattSkillsFlowConfig {
+    readonly trackerKind: 'local' | 'github';
+    readonly githubRepository?: string;
     readonly defaultMaxConcurrentLanes: number;
     readonly hardMaxConcurrentLanes: number;
     readonly worktreeRootName: string;
@@ -26,6 +28,7 @@ export declare const Config: z<MattSkillsFlowConfig>;
 export interface CreateFlowRequest {
     readonly title: string;
     readonly repoRoot: string;
+    readonly initialContext?: string;
     readonly workspaceId?: string;
 }
 export interface GetFlowRequest {
@@ -103,6 +106,7 @@ export interface PreviewFrontierRequest {
 export interface StartFrontierRequest {
     readonly flowId: string;
     readonly expectedRevision: number;
+    readonly confirmedConcurrency: true;
     readonly maxConcurrent?: number;
 }
 export interface RequestReviewRequest {
@@ -128,6 +132,13 @@ export interface AcceptFlowRequest {
     readonly expectedRevision: number;
     readonly candidateArtifactId: string;
     readonly accept: true;
+}
+export interface RejectAcceptanceRequest {
+    readonly flowId: string;
+    readonly expectedRevision: number;
+    readonly candidateArtifactId: string;
+    readonly reason: string;
+    readonly returnTo: 'grilling' | 'wayfinding' | 'ticketing';
 }
 export interface CleanupLaneRequest {
     readonly flowId: string;
@@ -203,6 +214,8 @@ export declare class MattSkillsFlowService extends TypertRemoteService {
     prepareAcceptance(request: PrepareAcceptanceRequest): Promise<FlowRecord>;
     /** Commit a human acceptance decision against the frozen candidate and exact Git commit. */
     accept(request: AcceptFlowRequest): Promise<FlowRecord>;
+    /** Record a human rejection and return the Flow to a selected earlier phase. */
+    rejectAcceptance(request: RejectAcceptanceRequest): Promise<FlowRecord>;
     /** Remove one clean Lane worktree while retaining its immutable Flow evidence. */
     cleanup(request: CleanupLaneRequest): Promise<FlowRecord>;
     /** Explicitly resume a cold root Session and record a reconciled recovery checkpoint. */
@@ -212,6 +225,7 @@ export declare class MattSkillsFlowService extends TypertRemoteService {
     private driveReview;
     /** Record a human disposition for one Review finding and reopen acceptance when all are settled. */
     disposeFinding(request: DisposeFindingRequest): Promise<FlowRecord>;
+    private reFreezeCandidate;
     /** Compile active Decisions into a bounded, immutable Spec draft. */
     generateSpec(request: SpecRequest): Promise<FlowRecord>;
     /** Approve the current Spec draft and freeze its digest for dependent work. */
@@ -233,3 +247,5 @@ export declare class MattSkillsFlowService extends TypertRemoteService {
     private startPlanning;
 }
 export default MattSkillsFlowService;
+/** Build explicit lifecycle and configuration dispositions for review admission. */
+export declare function buildAdmissionMatrix(flow: FlowRecord, config: Pick<MattSkillsFlowConfig, 'trackerKind' | 'defaultMaxConcurrentLanes' | 'hardMaxConcurrentLanes' | 'requiredSkills' | 'artifactRoot' | 'maxArtifactBytes' | 'laneTimeoutMs' | 'laneMaxTokens' | 'laneMaxDepth' | 'defaultMaxReviewRounds' | 'hardMaxReviewRounds' | 'worktreeRootName'>): AdmissionMatrix;
