@@ -71,6 +71,16 @@ export interface ReviewFinding {
   readonly disposition?: { readonly kind: 'fixed' | 'rejected' | 'deferred'; readonly reason: string }
 }
 
+export interface AcceptanceTrace {
+  readonly ticketId: string
+  readonly criterion: string
+  readonly source: string
+  readonly productionPath: string
+  readonly falsifyingCase: string
+  readonly observableSignal: string
+  readonly status: 'covered' | 'missing' | 'deferred'
+}
+
 export function frontierFor(flow: Pick<FlowRecord, 'id' | 'revision' | 'tickets' | 'lanes'>, maxConcurrent: number): FrontierPlan {
   const terminal = new Set(['completed', 'integrated'] as const)
   const claimed = new Set(flow.lanes.filter(lane => ['running', 'blocked', 'completed', 'integrating', 'integrated'].includes(lane.status)).map(lane => lane.ticketId))
@@ -302,6 +312,8 @@ export interface FlowRecord {
   readonly review?: {
     readonly candidateArtifactId: string
     readonly candidateSha256: string
+    readonly admissionArtifactId?: string
+    readonly admissionSha256?: string
     readonly fixedPoint: string
     readonly createdAt: number
     readonly status?: 'frozen' | 'running' | 'complete' | 'failed'
