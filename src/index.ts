@@ -182,6 +182,7 @@ export interface PreviewFrontierRequest {
 export interface StartFrontierRequest {
   readonly flowId: string
   readonly expectedRevision: number
+  readonly confirmedConcurrency: true
   readonly maxConcurrent?: number
 }
 
@@ -1174,6 +1175,7 @@ export class MattSkillsFlowService extends TypertRemoteService {
   /** Admit all currently unclaimed Frontier Lanes in one CAS and run them in the background. */
   @Remote('startFrontier')
   async startFrontier(request: StartFrontierRequest): Promise<FlowRecord> {
+    if (request.confirmedConcurrency !== true) throw new Error('FRONTIER_CONFIRMATION_REQUIRED: confirm the concurrency Gate before starting Lanes')
     const flowId = FlowId(request.flowId)
     const current = this.repository.get(flowId)
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)

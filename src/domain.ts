@@ -425,7 +425,7 @@ export const flowRecordSchema = z.object({
     aggregateSha256: z.string().optional(),
   }).strict().optional(),
   review: z.object({
-    candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(),
+    candidateArtifactId: z.string(), candidateSha256: z.string(), admissionArtifactId: z.string().optional(), admissionSha256: z.string().optional(), fixedPoint: z.string(), createdAt: z.number(),
     status: z.enum(['frozen', 'running', 'complete', 'failed']).optional(), round: z.number().int().nonnegative().optional(),
     findings: z.array(z.object({ id: z.string(), axis: z.enum(['standards', 'spec']), severity: z.enum(['blocking', 'warning', 'note']), title: z.string(), explanation: z.string(), disposition: z.object({ kind: z.enum(['fixed', 'rejected', 'deferred']), reason: z.string() }).strict().optional() }).strict()).optional(),
   }).strict().optional(),
