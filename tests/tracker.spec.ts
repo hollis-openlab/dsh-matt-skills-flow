@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -18,6 +18,15 @@ describe('LocalTracker', () => {
     })
     expect(publication.kind).toBe('local')
     expect(JSON.parse(await readFile(publication.graphPath, 'utf8')).tickets).toHaveLength(1)
+    await expect(new LocalTracker().inspect({
+      id: 'flow-a' as never, title: 'Login Flow', repoRoot,
+      tickets: [{ id: 'ticket-a', title: 'Persist login', status: 'open', blockedBy: [], dependsOn: [] }],
+    }, publication)).resolves.toEqual({ kind: 'local', graphSha256: publication.graphSha256, drift: [] })
+    await writeFile(publication.graphPath, 'tampered\n', 'utf8')
+    await expect(new LocalTracker().inspect({
+      id: 'flow-a' as never, title: 'Login Flow', repoRoot,
+      tickets: [{ id: 'ticket-a', title: 'Persist login', status: 'open', blockedBy: [], dependsOn: [] }],
+    }, publication)).resolves.toMatchObject({ drift: ['graph'] })
   })
 })
 

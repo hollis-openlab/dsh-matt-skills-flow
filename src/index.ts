@@ -20,7 +20,7 @@ import type { FlowRecord } from './domain.ts'
 import { createFlowRecord, evaluateTransitionGate, FlowId, frontierFor, nextActionFor, transitionFor, validateTicketGraph, flowActionSchema, type AcceptanceTrace, type FlowAction, type FrontierPlan, type ReviewFinding, type SkillSnapshotEntry } from './domain.ts'
 import { FlowRepository } from './storage.ts'
 import { ArtifactStore } from './artifacts.ts'
-import { GitHubTracker, LocalTracker, type TrackerAdapter } from './tracker.ts'
+import { GitHubTracker, LocalTracker, type TrackerAdapter, type TrackerRecord } from './tracker.ts'
 import { GitRunner } from './git.ts'
 import { continueActionFor, parseMattFlowCommand } from './commands.ts'
 
@@ -837,6 +837,9 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current === undefined) throw new Error(`FLOW_NOT_FOUND: ${request.flowId}`)
     const completed = current.lanes.filter(lane => lane.status === 'integrated')
     if (completed.length === 0) throw new Error('REVIEW_ADMISSION_FAILED: no integrated Lane Receipt is available')
+    if (current.tracker === undefined) throw new Error('REVIEW_ADMISSION_FAILED: publish the Ticket Graph before review admission')
+    const trackerSnapshot = await this.tracker.inspect(current, current.tracker as unknown as TrackerRecord)
+    if (trackerSnapshot.drift.length > 0) throw new Error(`TRACKER_DRIFT: ${trackerSnapshot.drift.join(', ')}`)
     const candidateRoot = current.integration?.worktreePath ?? current.repoRoot
     const candidateCommit = current.integration === undefined
       ? (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
@@ -894,6 +897,9 @@ export class MattSkillsFlowService extends TypertRemoteService {
     if (current.acceptance?.status !== 'ready' || current.acceptance.candidateCommit === undefined) throw new Error('ACCEPTANCE_GATE_BLOCKED: candidate is not ready for human acceptance')
     if ((current.review.findings ?? []).some(finding => finding.severity !== 'note' && finding.disposition === undefined)) throw new Error('ACCEPTANCE_GATE_BLOCKED: unresolved review findings remain')
     if (current.questions.some(question => question.status === 'pending')) throw new Error('ACCEPTANCE_GATE_BLOCKED: unresolved Questions remain')
+    if (current.tracker === undefined) throw new Error('ACCEPTANCE_GATE_BLOCKED: Ticket Graph publication is missing')
+    const trackerSnapshot = await this.tracker.inspect(current, current.tracker as unknown as TrackerRecord)
+    if (trackerSnapshot.drift.length > 0) throw new Error(`TRACKER_DRIFT: ${trackerSnapshot.drift.join(', ')}`)
     const candidateRoot = current.integration?.worktreePath ?? current.repoRoot
     const head = current.integration === undefined
       ? (await this.git.preflight(current.repoRoot, this.config.worktreeRootName)).head
