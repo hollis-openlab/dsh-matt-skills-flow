@@ -1,0 +1,4 @@
+# Matt Skills development workflow profile patch.
+- insert:
+    - id: matt-skills-flow
+      name: '@deepseek-ai/dsh-matt-skills-flow'

@@ -1,0 +1,47 @@
+import type { FlowRecord, FrontierPlan } from '../domain.ts';
+import type { FlowRemote } from '../remote.ts';
+export interface FlowUiState {
+    readonly open: boolean;
+    readonly busy: boolean;
+    readonly error?: string;
+    readonly flows: readonly FlowRecord[];
+    readonly selected?: string;
+    readonly showCreate: boolean;
+    readonly frontier?: FrontierPlan;
+}
+export declare class FlowUiStore {
+    private readonly remote;
+    private listeners;
+    private state;
+    constructor(remote: FlowRemote);
+    subscribe(listener: () => void): () => void;
+    snapshot(): FlowUiState;
+    open(): void;
+    close(): void;
+    toggleCreate(): void;
+    select(flowId: string): void;
+    load(): Promise<void>;
+    create(title: string, repoRoot: string): Promise<void>;
+    advance(flow: FlowRecord, action: string): Promise<void>;
+    decide(flow: FlowRecord, question: string, answer: string): Promise<void>;
+    ticket(flow: FlowRecord, title: string, dependsOn?: string[]): Promise<void>;
+    lane(flow: FlowRecord, ticketId: string): Promise<void>;
+    publish(flow: FlowRecord): Promise<void>;
+    provisionLane(flow: FlowRecord, laneId: string): Promise<void>;
+    runLane(flow: FlowRecord, laneId: string): Promise<void>;
+    prepareAcceptance(flow: FlowRecord): Promise<void>;
+    accept(flow: FlowRecord): Promise<void>;
+    cleanup(flow: FlowRecord, laneId: string): Promise<void>;
+    integrate(flow: FlowRecord, laneId: string): Promise<void>;
+    answerQuestion(flow: FlowRecord, questionId: string, answer: string): Promise<void>;
+    resume(flow: FlowRecord): Promise<void>;
+    previewFrontier(flow: FlowRecord): Promise<void>;
+    startFrontier(flow: FlowRecord, maxConcurrent?: number): Promise<void>;
+    requestReview(flow: FlowRecord): Promise<void>;
+    disposeFinding(flow: FlowRecord, findingId: string): Promise<void>;
+    generateSpec(flow: FlowRecord): Promise<void>;
+    approveSpec(flow: FlowRecord): Promise<void>;
+    exportEvidence(flow: FlowRecord): Promise<void>;
+    private mutateFlow;
+    private emit;
+}
