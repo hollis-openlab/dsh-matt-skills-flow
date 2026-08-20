@@ -71,6 +71,20 @@ export interface ReviewFinding {
   readonly disposition?: { readonly kind: 'fixed' | 'rejected' | 'deferred'; readonly reason: string }
 }
 
+export interface AdmissionDisposition {
+  readonly id: string
+  readonly category: 'lifecycle' | 'configuration'
+  readonly subject: string
+  readonly status: 'covered' | 'not-applicable' | 'deferred' | 'missing'
+  readonly evidence: readonly string[]
+  readonly reason?: string
+}
+
+export interface AdmissionMatrix {
+  readonly lifecycle: readonly AdmissionDisposition[]
+  readonly configuration: readonly AdmissionDisposition[]
+}
+
 export interface AcceptanceTrace {
   readonly ticketId: string
   readonly criterion: string
@@ -281,6 +295,7 @@ export interface FlowRecord {
   readonly id: FlowId
   readonly revision: number
   readonly title: string
+  readonly initialContext?: string
   readonly workspaceId?: WorkspaceId
   readonly repoRoot: string
   readonly rootSessionId?: string
@@ -324,6 +339,7 @@ export interface FlowRecord {
     readonly status?: 'frozen' | 'running' | 'complete' | 'failed'
     readonly round?: number
     readonly findings?: readonly ReviewFinding[]
+    readonly admissionMatrix?: AdmissionMatrix
   }
   readonly recovery?: {
     readonly status: 'clean' | 'required' | 'reconciled'
@@ -402,8 +418,15 @@ const activitySchema = z.object({
   handoff: z.enum(['to-grilling', 'to-spec', 'to-tickets']).optional(), createdAt: z.number(), completedAt: z.number().optional(),
 }).strict()
 
+const admissionDispositionSchema = z.object({
+  id: z.string(), category: z.enum(['lifecycle', 'configuration']), subject: z.string(),
+  status: z.enum(['covered', 'not-applicable', 'deferred', 'missing']), evidence: z.array(z.string()), reason: z.string().optional(),
+}).strict()
+
+const admissionMatrixSchema = z.object({ lifecycle: z.array(admissionDispositionSchema), configuration: z.array(admissionDispositionSchema) }).strict()
+
 export const flowRecordSchema = z.object({
-  schemaVersion: z.literal(1), id: z.string(), revision: z.number().int().positive(), title: z.string(),
+  schemaVersion: z.literal(1), id: z.string(), revision: z.number().int().positive(), title: z.string(), initialContext: z.string().optional(),
   workspaceId: z.string().optional(), repoRoot: z.string(), rootSessionId: z.string().optional(), phase: flowPhaseSchema, pausedFrom: flowPhaseSchema.optional(), planningReturnPhase: z.enum(['intake', 'grilling', 'wayfinding']).optional(), nextAction: z.string(),
   createdAt: z.number(), updatedAt: z.number(), decisions: z.array(decisionSchema), tickets: z.array(ticketSchema),
   lanes: z.array(laneSchema), questions: z.array(questionSchema),
@@ -433,6 +456,7 @@ export const flowRecordSchema = z.object({
     candidateArtifactId: z.string(), candidateSha256: z.string(), admissionArtifactId: z.string().optional(), admissionSha256: z.string().optional(), fixedPoint: z.string(), createdAt: z.number(),
     status: z.enum(['frozen', 'running', 'complete', 'failed']).optional(), round: z.number().int().nonnegative().optional(),
     findings: z.array(z.object({ id: z.string(), axis: z.enum(['standards', 'spec']), severity: z.enum(['blocking', 'warning', 'note']), title: z.string(), explanation: z.string(), disposition: z.object({ kind: z.enum(['fixed', 'rejected', 'deferred']), reason: z.string() }).strict().optional() }).strict()).optional(),
+    admissionMatrix: admissionMatrixSchema.optional(),
   }).strict().optional(),
   spec: z.object({ status: z.enum(['draft', 'approved', 'stale']), artifactId: z.string(), sha256: z.string(), createdAt: z.number(), approvedAt: z.number().optional() }).strict().optional(),
   export: z.object({ artifactId: z.string(), sha256: z.string(), createdAt: z.number() }).strict().optional(),
@@ -494,6 +518,7 @@ export function nextPhaseFor(phase: FlowPhase): FlowPhase | undefined {
 export function createFlowRecord(input: {
   id: FlowId
   title: string
+  initialContext?: string
   repoRoot: string
   rootSessionId?: string
   workspaceId?: WorkspaceId
@@ -504,6 +529,7 @@ export function createFlowRecord(input: {
     id: input.id,
     revision: 1,
     title: input.title,
+    ...(input.initialContext === undefined ? {} : { initialContext: input.initialContext }),
     ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
     repoRoot: input.repoRoot,
     ...(input.rootSessionId === undefined ? {} : { rootSessionId: input.rootSessionId }),
