@@ -50,6 +50,12 @@ export class GitRunner {
     return await this.text(cwd, ['status', '--porcelain', '--untracked-files=all'])
   }
 
+  /** Return the changed paths between two immutable commits. */
+  async changedFiles(cwd: string, baseCommit: string, commit: string): Promise<string[]> {
+    const output = await this.text(cwd, ['diff', '--name-only', '--no-renames', `${baseCommit}..${commit}`])
+    return output.length === 0 ? [] : output.split('\n').filter(Boolean)
+  }
+
   /** Merge one verified Lane branch into an integration worktree. */
   async mergeNoEdit(worktreePath: string, branch: string): Promise<string> {
     const result = await this.run(worktreePath, ['merge', '--no-ff', '--no-edit', branch])

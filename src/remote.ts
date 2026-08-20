@@ -9,7 +9,10 @@ const flowSchema = z.object({
   repoRoot: z.string(), rootSessionId: z.string().optional(), phase: z.string(), pausedFrom: z.string().optional(), planningReturnPhase: z.string().optional(), nextAction: z.string(), createdAt: z.number(), updatedAt: z.number(),
   decisions: z.array(z.unknown()), tickets: z.array(z.unknown()), lanes: z.array(z.unknown()), questions: z.array(z.unknown()), artifacts: z.array(z.unknown()).default([]),
   skillSnapshot: z.unknown().optional(), acceptance: z.unknown().optional(),
-  tracker: z.object({ kind: z.literal('local'), root: z.string(), graphPath: z.string(), graphSha256: z.string(), publishedAt: z.number() }).strict().optional(),
+  tracker: z.union([
+    z.object({ kind: z.literal('local'), root: z.string(), graphPath: z.string(), graphSha256: z.string(), publishedAt: z.number() }).strict(),
+    z.object({ kind: z.literal('github'), repository: z.string(), graphPath: z.string(), graphSha256: z.string(), issueNumbers: z.array(z.number().int().positive()), issueUrls: z.array(z.string().url()), publishedAt: z.number() }).strict(),
+  ]).optional(),
   integration: z.object({ branch: z.string(), worktreePath: z.string(), baseCommit: z.string(), headCommit: z.string() }).strict().optional(),
   review: z.object({ candidateArtifactId: z.string(), candidateSha256: z.string(), fixedPoint: z.string(), createdAt: z.number(), status: z.string().optional(), round: z.number().int().nonnegative().optional(), findings: z.array(z.unknown()).optional() }).strict().optional(),
   recovery: z.object({ status: z.string(), reason: z.string().optional(), observedAt: z.number() }).strict().optional(),
