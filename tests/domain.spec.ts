@@ -3,11 +3,12 @@ import { createFlowRecord, defaultTransitionFor, evaluateTransitionGate, flowRec
 
 describe('Flow domain', () => {
   it('creates a durable intake record with an actionable next step', () => {
-    const flow = createFlowRecord({ id: 'flow-test' as FlowRecord['id'], title: 'Login flow', repoRoot: '/tmp/project', now: 100 })
+    const flow = createFlowRecord({ id: 'flow-test' as FlowRecord['id'], title: 'Login flow', initialContext: 'The login form loses state after reload', repoRoot: '/tmp/project', now: 100 })
     expect(flowRecordSchema.parse(flow)).toEqual(flow)
     expect(flow.phase).toBe('intake')
     expect(flow.nextAction).toBe('Start planning with grill-with-docs')
     expect(flow.revision).toBe(1)
+    expect(flow.initialContext).toBe('The login form loses state after reload')
   })
 
   it('keeps the phase labels deterministic', () => {
