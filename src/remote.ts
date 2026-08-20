@@ -25,6 +25,7 @@ const ticketRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.n
 const updateTicketRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), ticketId: z.string().min(1), title: z.string().min(1), dependsOn: z.array(z.string()).optional(), acceptanceCriteria: z.array(z.string()).optional(), workflowRole: z.string().optional() }).strict()
 const startActivityRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), kind: z.enum(['research', 'prototype', 'wayfinder']), question: z.string().min(1), expectedEvidence: z.string().optional() }).strict()
 const completeActivityRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), activityId: z.string().min(1), output: z.string().min(1), sourceRef: z.string().min(1), handoff: z.enum(['to-grilling', 'to-spec', 'to-tickets']).optional() }).strict()
+const rejectAcceptanceRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), candidateArtifactId: z.string().min(1), reason: z.string().min(1), returnTo: z.enum(['grilling', 'wayfinding', 'ticketing']) }).strict()
 const laneRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), ticketId: z.string().min(1) }).strict()
 const publishRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive() }).strict()
 const provisionLaneRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), laneId: z.string().min(1) }).strict()
@@ -109,6 +110,12 @@ export const TYPERT_REMOTE = {
       parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#CompleteActivityRequest', schema: completeActivityRequestSchema } }],
       result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
       cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 540, column: 3 },
+    },
+    {
+      id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/rejectAcceptance', service: 'mattSkillsFlow', namespace: 'mattSkillsFlow', method: 'rejectAcceptance', invocation: { kind: 'direct' },
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#RejectAcceptanceRequest', schema: rejectAcceptanceRequestSchema } }],
+      result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
+      cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 820, column: 3 },
     },
     {
       id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/lane',
@@ -245,6 +252,7 @@ export interface FlowRemote {
   updateTicket(request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   startActivity(request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   completeActivity(request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  rejectAcceptance(request: { flowId: string; expectedRevision: number; candidateArtifactId: string; reason: string; returnTo: 'grilling' | 'wayfinding' | 'ticketing' }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   lane(request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   publish(request: { flowId: string; expectedRevision: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   provisionLane(request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
@@ -275,6 +283,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     updateTicket: (request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     startActivity: (request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     completeActivity: (request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    rejectAcceptance: (request: { flowId: string; expectedRevision: number; candidateArtifactId: string; reason: string; returnTo: 'grilling' | 'wayfinding' | 'ticketing' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     lane: (request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     publish: (request: { flowId: string; expectedRevision: number }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     provisionLane: (request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
@@ -303,6 +312,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'mattSkillsFlow/updateTicket': (request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/startActivity': (request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/completeActivity': (request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    'mattSkillsFlow/rejectAcceptance': (request: { flowId: string; expectedRevision: number; candidateArtifactId: string; reason: string; returnTo: 'grilling' | 'wayfinding' | 'ticketing' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/lane': (request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/publish': (request: { flowId: string; expectedRevision: number }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/provisionLane': (request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>

@@ -52,6 +52,6 @@ await writeFile(join(lib, 'client.js'), [
 const host = await import(join(lib, 'index.js'))
 if (typeof host.default !== 'function' || host.default.name !== 'MattSkillsFlowService') throw new Error('host half does not expose MattSkillsFlowService')
 const remote = await import(join(lib, 'typert.remote-client.js'))
-if (remote.TYPERT_REMOTE.descriptors.length !== 26) throw new Error('Remote descriptor count is not twenty-six')
+if (remote.TYPERT_REMOTE.descriptors.length !== 27) throw new Error('Remote descriptor count is not twenty-seven')
 new Function(await readFile(join(lib, 'client.js'), 'utf8'))
 console.log(`built ${pkg.name}: host, invariant, remote, and client halves`)
