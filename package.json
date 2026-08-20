@@ -2,7 +2,12 @@
   "name": "@deepseek-ai/dsh-matt-skills-flow",
   "description": "Durable development workflow orchestration for mattpocock/skills inside DeepSeek Harness",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hollis-openlab/dsh-matt-skills-flow.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
