@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createFlowRecord, defaultTransitionFor, evaluateTransitionGate, flowRecordSchema, frontierFor, nextActionFor, transitionFor, type FlowRecord } from '../src/domain.ts'
+import { createFlowRecord, defaultTransitionFor, evaluateTransitionGate, flowRecordSchema, frontierFor, nextActionFor, transitionFor, validateTicketGraph, type FlowRecord } from '../src/domain.ts'
 
 describe('Flow domain', () => {
   it('creates a durable intake record with an actionable next step', () => {
@@ -71,5 +71,12 @@ describe('Flow domain', () => {
     }
     expect(frontierFor(flow, 2).tickets).toEqual(['ticket-b'])
     expect(frontierFor({ ...flow, lanes: [{ id: 'lane-b', ticketId: 'ticket-b', status: 'ready' as const, updatedAt: 100 }] }, 2).tickets).toEqual(['ticket-b'])
+  })
+
+  it('rejects Ticket Graph cycles before publication', () => {
+    expect(() => validateTicketGraph([
+      { id: 'ticket-a', dependsOn: ['ticket-b'] },
+      { id: 'ticket-b', dependsOn: ['ticket-a'] },
+    ])).toThrow('TICKET_GRAPH_CYCLE')
   })
 })

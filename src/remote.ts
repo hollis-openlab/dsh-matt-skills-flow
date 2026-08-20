@@ -21,7 +21,10 @@ const createRequestSchema = z.object({ title: z.string().min(1), repoRoot: z.str
 const idRequestSchema = z.object({ flowId: z.string() }).strict()
 const advanceRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), action: z.string().min(1) }).strict()
 const decisionRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), question: z.string().min(1), answer: z.string().min(1) }).strict()
-const ticketRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), title: z.string().min(1), dependsOn: z.array(z.string()).optional() }).strict()
+const ticketRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), title: z.string().min(1), dependsOn: z.array(z.string()).optional(), acceptanceCriteria: z.array(z.string()).optional(), workflowRole: z.string().optional() }).strict()
+const updateTicketRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), ticketId: z.string().min(1), title: z.string().min(1), dependsOn: z.array(z.string()).optional(), acceptanceCriteria: z.array(z.string()).optional(), workflowRole: z.string().optional() }).strict()
+const startActivityRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), kind: z.enum(['research', 'prototype', 'wayfinder']), question: z.string().min(1), expectedEvidence: z.string().optional() }).strict()
+const completeActivityRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), activityId: z.string().min(1), output: z.string().min(1), sourceRef: z.string().min(1), handoff: z.enum(['to-grilling', 'to-spec', 'to-tickets']).optional() }).strict()
 const laneRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), ticketId: z.string().min(1) }).strict()
 const publishRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive() }).strict()
 const provisionLaneRequestSchema = z.object({ flowId: z.string(), expectedRevision: z.number().int().positive(), laneId: z.string().min(1) }).strict()
@@ -87,6 +90,25 @@ export const TYPERT_REMOTE = {
       parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#CreateTicketRequest', schema: ticketRequestSchema } }],
       result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
       cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 203, column: 3 },
+    },
+    {
+      id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/updateTicket',
+      service: 'mattSkillsFlow', namespace: 'mattSkillsFlow', method: 'updateTicket', invocation: { kind: 'direct' },
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#UpdateTicketRequest', schema: updateTicketRequestSchema } }],
+      result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
+      cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 470, column: 3 },
+    },
+    {
+      id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/startActivity', service: 'mattSkillsFlow', namespace: 'mattSkillsFlow', method: 'startActivity', invocation: { kind: 'direct' },
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#StartActivityRequest', schema: startActivityRequestSchema } }],
+      result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
+      cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 510, column: 3 },
+    },
+    {
+      id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/completeActivity', service: 'mattSkillsFlow', namespace: 'mattSkillsFlow', method: 'completeActivity', invocation: { kind: 'direct' },
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#CompleteActivityRequest', schema: completeActivityRequestSchema } }],
+      result: { mode: 'strict', typeSymbol: '@deepseek-ai/dsh-matt-skills-flow#FlowRecord', schema: flowSchema },
+      cancellation: { parameter: 'signal' }, sourceLocation: { file: 'src/index.ts', line: 540, column: 3 },
     },
     {
       id: '@deepseek-ai/dsh-matt-skills-flow#mattSkillsFlow/lane',
@@ -219,7 +241,10 @@ export interface FlowRemote {
   create(request: { title: string; repoRoot: string; workspaceId?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   advance(request: { flowId: string; expectedRevision: number; action: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   decide(request: { flowId: string; expectedRevision: number; question: string; answer: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
-  ticket(request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[] }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  ticket(request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  updateTicket(request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  startActivity(request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
+  completeActivity(request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   lane(request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   publish(request: { flowId: string; expectedRevision: number }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
   provisionLane(request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>
@@ -246,7 +271,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     create: (request: { title: string; repoRoot: string; workspaceId?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     advance: (request: { flowId: string; expectedRevision: number; action: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     decide: (request: { flowId: string; expectedRevision: number; question: string; answer: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
-    ticket: (request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[] }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    ticket: (request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    updateTicket: (request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    startActivity: (request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    completeActivity: (request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     lane: (request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     publish: (request: { flowId: string; expectedRevision: number }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     provisionLane: (request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
@@ -271,7 +299,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'mattSkillsFlow/create': (request: { title: string; repoRoot: string; workspaceId?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/advance': (request: { flowId: string; expectedRevision: number; action: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/decide': (request: { flowId: string; expectedRevision: number; question: string; answer: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
-    'mattSkillsFlow/ticket': (request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[] }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    'mattSkillsFlow/ticket': (request: { flowId: string; expectedRevision: number; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    'mattSkillsFlow/updateTicket': (request: { flowId: string; expectedRevision: number; ticketId: string; title: string; dependsOn?: string[]; acceptanceCriteria?: string[]; workflowRole?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    'mattSkillsFlow/startActivity': (request: { flowId: string; expectedRevision: number; kind: 'research' | 'prototype' | 'wayfinder'; question: string; expectedEvidence?: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
+    'mattSkillsFlow/completeActivity': (request: { flowId: string; expectedRevision: number; activityId: string; output: string; sourceRef: string; handoff?: 'to-grilling' | 'to-spec' | 'to-tickets' }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/lane': (request: { flowId: string; expectedRevision: number; ticketId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/publish': (request: { flowId: string; expectedRevision: number }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>
     'mattSkillsFlow/provisionLane': (request: { flowId: string; expectedRevision: number; laneId: string }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>

@@ -357,6 +357,32 @@ export interface FlowRemote {
         expectedRevision: number;
         title: string;
         dependsOn?: string[];
+        acceptanceCriteria?: string[];
+        workflowRole?: string;
+    }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
+    updateTicket(request: {
+        flowId: string;
+        expectedRevision: number;
+        ticketId: string;
+        title: string;
+        dependsOn?: string[];
+        acceptanceCriteria?: string[];
+        workflowRole?: string;
+    }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
+    startActivity(request: {
+        flowId: string;
+        expectedRevision: number;
+        kind: 'research' | 'prototype' | 'wayfinder';
+        question: string;
+        expectedEvidence?: string;
+    }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
+    completeActivity(request: {
+        flowId: string;
+        expectedRevision: number;
+        activityId: string;
+        output: string;
+        sourceRef: string;
+        handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
     }, signal?: AbortSignal): Promise<RemoteResult<FlowRecord>>;
     lane(request: {
         flowId: string;
@@ -467,6 +493,32 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
             expectedRevision: number;
             title: string;
             dependsOn?: string[];
+            acceptanceCriteria?: string[];
+            workflowRole?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        updateTicket: (request: {
+            flowId: string;
+            expectedRevision: number;
+            ticketId: string;
+            title: string;
+            dependsOn?: string[];
+            acceptanceCriteria?: string[];
+            workflowRole?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        startActivity: (request: {
+            flowId: string;
+            expectedRevision: number;
+            kind: 'research' | 'prototype' | 'wayfinder';
+            question: string;
+            expectedEvidence?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        completeActivity: (request: {
+            flowId: string;
+            expectedRevision: number;
+            activityId: string;
+            output: string;
+            sourceRef: string;
+            handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
         }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
         lane: (request: {
             flowId: string;
@@ -576,6 +628,32 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
             expectedRevision: number;
             title: string;
             dependsOn?: string[];
+            acceptanceCriteria?: string[];
+            workflowRole?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        'mattSkillsFlow/updateTicket': (request: {
+            flowId: string;
+            expectedRevision: number;
+            ticketId: string;
+            title: string;
+            dependsOn?: string[];
+            acceptanceCriteria?: string[];
+            workflowRole?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        'mattSkillsFlow/startActivity': (request: {
+            flowId: string;
+            expectedRevision: number;
+            kind: 'research' | 'prototype' | 'wayfinder';
+            question: string;
+            expectedEvidence?: string;
+        }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
+        'mattSkillsFlow/completeActivity': (request: {
+            flowId: string;
+            expectedRevision: number;
+            activityId: string;
+            output: string;
+            sourceRef: string;
+            handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
         }, signal?: AbortSignal) => Promise<RemoteResult<FlowRecord>>;
         'mattSkillsFlow/lane': (request: {
             flowId: string;

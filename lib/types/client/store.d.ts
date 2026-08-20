@@ -24,7 +24,10 @@ export declare class FlowUiStore {
     create(title: string, repoRoot: string): Promise<void>;
     advance(flow: FlowRecord, action: string): Promise<void>;
     decide(flow: FlowRecord, question: string, answer: string): Promise<void>;
-    ticket(flow: FlowRecord, title: string, dependsOn?: string[]): Promise<void>;
+    ticket(flow: FlowRecord, title: string, dependsOn?: string[], acceptanceCriteria?: string[], workflowRole?: string): Promise<void>;
+    updateTicket(flow: FlowRecord, ticketId: string, title: string, dependsOn: string[], acceptanceCriteria: string[], workflowRole?: string): Promise<void>;
+    startActivity(flow: FlowRecord, kind: 'research' | 'prototype' | 'wayfinder', question: string, expectedEvidence?: string): Promise<void>;
+    completeActivity(flow: FlowRecord, activityId: string, output: string, sourceRef: string, handoff?: 'to-grilling' | 'to-spec' | 'to-tickets'): Promise<void>;
     lane(flow: FlowRecord, ticketId: string): Promise<void>;
     publish(flow: FlowRecord): Promise<void>;
     provisionLane(flow: FlowRecord, laneId: string): Promise<void>;

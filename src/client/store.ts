@@ -97,17 +97,38 @@ export class FlowUiStore {
     this.emit()
   }
 
-  async ticket(flow: FlowRecord, title: string, dependsOn: string[] = []): Promise<void> {
+  async ticket(flow: FlowRecord, title: string, dependsOn: string[] = [], acceptanceCriteria: string[] = [], workflowRole?: string): Promise<void> {
     this.state = { ...this.state, busy: true, error: undefined }
     this.emit()
     try {
-      const result = await this.remote.ticket({ flowId: flow.id, expectedRevision: flow.revision, title, dependsOn })
+      const result = await this.remote.ticket({ flowId: flow.id, expectedRevision: flow.revision, title, dependsOn, acceptanceCriteria, ...(workflowRole === undefined ? {} : { workflowRole }) })
       if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
       this.state = { ...this.state, busy: false, flows: this.state.flows.map(item => item.id === flow.id ? result.value : item) }
     } catch (error) {
       this.state = { ...this.state, busy: false, error: error instanceof Error ? error.message : String(error) }
     }
     this.emit()
+  }
+
+  async updateTicket(flow: FlowRecord, ticketId: string, title: string, dependsOn: string[], acceptanceCriteria: string[], workflowRole?: string): Promise<void> {
+    this.state = { ...this.state, busy: true, error: undefined }
+    this.emit()
+    try {
+      const result = await this.remote.updateTicket({ flowId: flow.id, expectedRevision: flow.revision, ticketId, title, dependsOn, acceptanceCriteria, ...(workflowRole === undefined ? {} : { workflowRole }) })
+      if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
+      this.state = { ...this.state, busy: false, flows: this.state.flows.map(item => item.id === flow.id ? result.value : item) }
+    } catch (error) {
+      this.state = { ...this.state, busy: false, error: error instanceof Error ? error.message : String(error) }
+    }
+    this.emit()
+  }
+
+  async startActivity(flow: FlowRecord, kind: 'research' | 'prototype' | 'wayfinder', question: string, expectedEvidence?: string): Promise<void> {
+    await this.mutateFlow(flow, request => this.remote.startActivity({ ...request, kind, question, ...(expectedEvidence === undefined ? {} : { expectedEvidence }) }))
+  }
+
+  async completeActivity(flow: FlowRecord, activityId: string, output: string, sourceRef: string, handoff?: 'to-grilling' | 'to-spec' | 'to-tickets'): Promise<void> {
+    await this.mutateFlow(flow, request => this.remote.completeActivity({ ...request, activityId, output, sourceRef, ...(handoff === undefined ? {} : { handoff }) }))
   }
 
   async lane(flow: FlowRecord, ticketId: string): Promise<void> {

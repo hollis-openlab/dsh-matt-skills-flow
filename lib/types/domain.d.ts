@@ -122,6 +122,8 @@ export interface TicketRecord {
     readonly status: 'open' | 'blocked' | 'running' | 'completed' | 'failed' | 'integrated';
     readonly blockedBy: readonly string[];
     readonly dependsOn: readonly string[];
+    readonly acceptanceCriteria?: readonly string[];
+    readonly workflowRole?: string;
 }
 export interface LaneRecord {
     readonly id: string;
@@ -147,6 +149,19 @@ export interface QuestionRecord {
     readonly createdAt: number;
     readonly answer?: string;
 }
+export type ActivityKind = 'research' | 'prototype' | 'wayfinder';
+export interface ActivityRecord {
+    readonly id: string;
+    readonly kind: ActivityKind;
+    readonly question: string;
+    readonly expectedEvidence?: string;
+    readonly status: 'open' | 'completed' | 'cancelled';
+    readonly output?: string;
+    readonly sourceRef?: string;
+    readonly handoff?: 'to-grilling' | 'to-spec' | 'to-tickets';
+    readonly createdAt: number;
+    readonly completedAt?: number;
+}
 export interface FlowRecord {
     readonly schemaVersion: 1;
     readonly id: FlowId;
@@ -165,6 +180,7 @@ export interface FlowRecord {
     readonly tickets: readonly TicketRecord[];
     readonly lanes: readonly LaneRecord[];
     readonly questions: readonly QuestionRecord[];
+    readonly activities?: readonly ActivityRecord[];
     readonly artifacts: readonly ArtifactRecord[];
     readonly tracker?: {
         readonly kind: 'local';
@@ -230,6 +246,8 @@ export interface SkillSnapshotEntry {
     };
     readonly contentSha256: string;
 }
+/** Validate dependency edges and reject unknown nodes or cycles before publication. */
+export declare function validateTicketGraph(tickets: readonly Pick<TicketRecord, 'id' | 'dependsOn'>[]): void;
 export declare const flowRecordSchema: z.ZodObject<{
     schemaVersion: z.ZodLiteral<1>;
     id: z.ZodString;
@@ -314,6 +332,8 @@ export declare const flowRecordSchema: z.ZodObject<{
         }>;
         blockedBy: z.ZodArray<z.ZodString>;
         dependsOn: z.ZodArray<z.ZodString>;
+        acceptanceCriteria: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        workflowRole: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
     lanes: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
@@ -353,6 +373,30 @@ export declare const flowRecordSchema: z.ZodObject<{
         createdAt: z.ZodNumber;
         answer: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
+    activities: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        kind: z.ZodEnum<{
+            research: "research";
+            prototype: "prototype";
+            wayfinder: "wayfinder";
+        }>;
+        question: z.ZodString;
+        expectedEvidence: z.ZodOptional<z.ZodString>;
+        status: z.ZodEnum<{
+            completed: "completed";
+            cancelled: "cancelled";
+            open: "open";
+        }>;
+        output: z.ZodOptional<z.ZodString>;
+        sourceRef: z.ZodOptional<z.ZodString>;
+        handoff: z.ZodOptional<z.ZodEnum<{
+            "to-grilling": "to-grilling";
+            "to-spec": "to-spec";
+            "to-tickets": "to-tickets";
+        }>>;
+        createdAt: z.ZodNumber;
+        completedAt: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>>>;
     artifacts: z.ZodDefault<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         kind: z.ZodEnum<{

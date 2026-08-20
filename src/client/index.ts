@@ -68,6 +68,24 @@ export function apply(ctx: ClientContext): void {
       if (mounted === undefined) throw new Error('mattSkillsFlow Remote is unavailable after client mount')
       return await mounted.ticket(request, signal)
     },
+    updateTicket: async (request, signal) => {
+      await mount
+      const mounted = ctx.get('remote.mattSkillsFlow') as FlowRemote | undefined
+      if (mounted === undefined) throw new Error('mattSkillsFlow Remote is unavailable after client mount')
+      return await mounted.updateTicket(request, signal)
+    },
+    startActivity: async (request, signal) => {
+      await mount
+      const mounted = ctx.get('remote.mattSkillsFlow') as FlowRemote | undefined
+      if (mounted === undefined) throw new Error('mattSkillsFlow Remote is unavailable after client mount')
+      return await mounted.startActivity(request, signal)
+    },
+    completeActivity: async (request, signal) => {
+      await mount
+      const mounted = ctx.get('remote.mattSkillsFlow') as FlowRemote | undefined
+      if (mounted === undefined) throw new Error('mattSkillsFlow Remote is unavailable after client mount')
+      return await mounted.completeActivity(request, signal)
+    },
     lane: async (request, signal) => {
       await mount
       const mounted = ctx.get('remote.mattSkillsFlow') as FlowRemote | undefined

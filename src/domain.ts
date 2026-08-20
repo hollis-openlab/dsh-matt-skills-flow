@@ -216,6 +216,8 @@ export interface TicketRecord {
   readonly status: 'open' | 'blocked' | 'running' | 'completed' | 'failed' | 'integrated'
   readonly blockedBy: readonly string[]
   readonly dependsOn: readonly string[]
+  readonly acceptanceCriteria?: readonly string[]
+  readonly workflowRole?: string
 }
 
 export interface LaneRecord {
@@ -244,6 +246,21 @@ export interface QuestionRecord {
   readonly answer?: string
 }
 
+export type ActivityKind = 'research' | 'prototype' | 'wayfinder'
+
+export interface ActivityRecord {
+  readonly id: string
+  readonly kind: ActivityKind
+  readonly question: string
+  readonly expectedEvidence?: string
+  readonly status: 'open' | 'completed' | 'cancelled'
+  readonly output?: string
+  readonly sourceRef?: string
+  readonly handoff?: 'to-grilling' | 'to-spec' | 'to-tickets'
+  readonly createdAt: number
+  readonly completedAt?: number
+}
+
 export interface FlowRecord {
   readonly schemaVersion: 1
   readonly id: FlowId
@@ -262,6 +279,7 @@ export interface FlowRecord {
   readonly tickets: readonly TicketRecord[]
   readonly lanes: readonly LaneRecord[]
   readonly questions: readonly QuestionRecord[]
+  readonly activities?: readonly ActivityRecord[]
   readonly artifacts: readonly ArtifactRecord[]
   readonly tracker?: {
     readonly kind: 'local'
@@ -323,8 +341,28 @@ const decisionSchema = z.object({
 
 const ticketSchema = z.object({
   id: z.string(), title: z.string(), status: z.enum(['open', 'blocked', 'running', 'completed', 'failed', 'integrated']),
-  blockedBy: z.array(z.string()), dependsOn: z.array(z.string()),
+  blockedBy: z.array(z.string()), dependsOn: z.array(z.string()), acceptanceCriteria: z.array(z.string()).optional(), workflowRole: z.string().optional(),
 }).strict()
+
+/** Validate dependency edges and reject unknown nodes or cycles before publication. */
+export function validateTicketGraph(tickets: readonly Pick<TicketRecord, 'id' | 'dependsOn'>[]): void {
+  const known = new Set(tickets.map(ticket => ticket.id))
+  for (const ticket of tickets) {
+    for (const dependency of ticket.dependsOn) if (!known.has(dependency)) throw new Error(`TICKET_DEPENDENCY_UNKNOWN: ${dependency}`)
+  }
+  const visiting = new Set<string>()
+  const visited = new Set<string>()
+  const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
+  const visit = (id: string): void => {
+    if (visited.has(id)) return
+    if (visiting.has(id)) throw new Error(`TICKET_GRAPH_CYCLE: dependency cycle includes ${id}`)
+    visiting.add(id)
+    for (const dependency of byId.get(id)?.dependsOn ?? []) visit(dependency)
+    visiting.delete(id)
+    visited.add(id)
+  }
+  for (const ticket of tickets) visit(ticket.id)
+}
 
 const laneSchema = z.object({
   id: z.string(), ticketId: z.string(),
@@ -337,11 +375,18 @@ const questionSchema = z.object({
   status: z.enum(['pending', 'answered', 'dismissed']), createdAt: z.number(), answer: z.string().optional(),
 }).strict()
 
+const activitySchema = z.object({
+  id: z.string(), kind: z.enum(['research', 'prototype', 'wayfinder']), question: z.string(), expectedEvidence: z.string().optional(),
+  status: z.enum(['open', 'completed', 'cancelled']), output: z.string().optional(), sourceRef: z.string().optional(),
+  handoff: z.enum(['to-grilling', 'to-spec', 'to-tickets']).optional(), createdAt: z.number(), completedAt: z.number().optional(),
+}).strict()
+
 export const flowRecordSchema = z.object({
   schemaVersion: z.literal(1), id: z.string(), revision: z.number().int().positive(), title: z.string(),
   workspaceId: z.string().optional(), repoRoot: z.string(), rootSessionId: z.string().optional(), phase: flowPhaseSchema, pausedFrom: flowPhaseSchema.optional(), planningReturnPhase: z.enum(['intake', 'grilling', 'wayfinding']).optional(), nextAction: z.string(),
   createdAt: z.number(), updatedAt: z.number(), decisions: z.array(decisionSchema), tickets: z.array(ticketSchema),
   lanes: z.array(laneSchema), questions: z.array(questionSchema),
+  activities: z.array(activitySchema).optional(),
   artifacts: z.array(z.object({
     id: z.string(), kind: z.enum(['decision', 'ticket', 'lane', 'packet', 'review', 'spec', 'export', 'acceptance']), mediaType: z.string(), sha256: z.string(),
     size: z.number().int().nonnegative(), relativePath: z.string(), createdAt: z.number(),
@@ -446,6 +491,7 @@ export function createFlowRecord(input: {
     tickets: [],
     lanes: [],
     questions: [],
+    activities: [],
     artifacts: [],
     skillSnapshot: { status: 'unknown', count: 0 },
     acceptance: { status: 'not-ready' },
