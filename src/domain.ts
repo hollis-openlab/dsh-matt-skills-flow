@@ -90,6 +90,7 @@ export function frontierFor(flow: Pick<FlowRecord, 'id' | 'revision' | 'tickets'
     .filter(ticket => !claimed.has(ticket.id))
     .filter(ticket => ticket.dependsOn.every(id => terminal.has(ticketState.get(id) as 'completed' | 'integrated')))
     .sort((a, b) => a.id.localeCompare(b.id))
+    .slice(0, maxConcurrent)
     .map(ticket => ticket.id)
   const warnings = tickets.length === 0 && flow.tickets.length > 0 ? ['No Ticket is currently unblocked and unclaimed'] : []
   return { flowId: flow.id, flowRevision: flow.revision, tickets, maxConcurrent, maxDepth: 1, maxTotalAgents: maxConcurrent, warnings }
