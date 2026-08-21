@@ -7,7 +7,7 @@ Matt Skills 是一个非官方 DeepSeek Harness 插件，把 [mattpocock/skills]
 ## 功能
 
 - 创建 Flow 时记录已安装 Matt Skills 及其内容摘要。
-- 保存 Flow 的初始目标或 Bug 上下文，并在审查准入时展示明确的生命周期/配置处置结果。
+- 保存 Flow 的初始目标或 Bug 上下文，通过可交互生命周期图展示审查流程，并用精简摘要呈现配置状态。
 - 持久化决策并支持明确替代旧决策，再生成和批准 Spec。
 - 发布依赖感知的 Ticket Graph，预览可执行 Frontier。
 - Ticket Graph 默认发布到仓库本地 Markdown；Host 配置选择 `trackerKind: github` 且 `gh` 已登录时，也可以按依赖顺序创建 GitHub Issues。
@@ -22,7 +22,7 @@ Matt Skills 是一个非官方 DeepSeek Harness 插件，把 [mattpocock/skills]
 使用 DeepSeek Harness 官方插件命令安装打包版本：
 
 ```sh
-pnpm dsh plugin --profile web add --workspace-root ./deepseek-ai-dsh-matt-skills-flow-0.1.0.tgz
+pnpm dsh plugin --profile web add --workspace-root ./deepseek-ai-dsh-matt-skills-flow-0.2.0.tgz
 ```
 
 然后正常启动 Harness Web：

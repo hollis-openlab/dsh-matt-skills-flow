@@ -1,4 +1,5 @@
 import React, { useSyncExternalStore } from 'react'
+import { Background, BackgroundVariant, Controls, MarkerType, Position, ReactFlow, type Edge, type Node } from '@xyflow/react'
 import type { AdmissionDisposition, FlowRecord } from '../domain.ts'
 import { defaultTransitionFor } from '../domain.ts'
 import type { MattSkillsFlowLocaleKey } from './locales.ts'
@@ -173,7 +174,7 @@ function FlowDetail({ flow, t, store, busy, frontier }: { flow: FlowRecord; t: T
       {flow.tickets.length > 0 ? <section className="matt-flow-panel"><h3>{t('frontier')}</h3><button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.previewFrontier(flow)}>{t('previewFrontier')}</button>{frontier?.flowId === flow.id ? <><p>{frontier.tickets.length > 0 ? frontier.tickets.join(', ') : t('frontierEmpty')}</p><small>{frontier.maxConcurrent} concurrent · depth {frontier.maxDepth} · {frontier.maxTotalAgents} agents</small>{frontier.tickets.length > 0 ? <><label><input type="checkbox" checked={frontierApproved} onChange={event => setFrontierApproved(event.target.checked)} /> {t('confirmConcurrency')}</label><button type="button" className="matt-flow-primary-action" disabled={busy || !frontierApproved} onClick={() => void store.startFrontier(flow, frontier.maxConcurrent)}>{t('startFrontier')}</button></> : null}{frontier.warnings.map(warning => <p key={warning}>{warning}</p>)}</> : null}</section> : null}
       <section className="matt-flow-panel"><h3>{t('lanes')}</h3>{flow.tickets.length === 0 ? <p>{t('emptyHint')}</p> : <div className="matt-flow-ticket-list">{flow.tickets.map(ticket => { const lane = flow.lanes.find(item => item.ticketId === ticket.id && !['failed', 'cancelled'].includes(item.status)) ?? flow.lanes.find(item => item.ticketId === ticket.id && ['failed', 'cancelled'].includes(item.status) && item.worktreePath !== undefined); return <div className="matt-flow-ticket-row" key={ticket.id}><span><strong>{ticket.title}</strong><code>{ticket.id}</code></span>{lane === undefined ? <button type="button" disabled={busy} onClick={() => editTicket(ticket)}>{t('editTicket')}</button> : null}{lane?.status === 'preparing' ? <button type="button" disabled={busy} onClick={() => void store.provisionLane(flow, lane.id)}>{t('createWorktree')}</button> : lane?.status === 'ready' ? <button type="button" disabled={busy} onClick={() => void store.runLane(flow, lane.id)}>{t('runLane')}</button> : lane?.status === 'running' ? <small>{t('laneRunning')}</small> : lane?.status === 'completed' ? <>{<small>{t('laneCompleted')}</small>}{lane.commit !== undefined ? <button type="button" disabled={busy} onClick={() => void store.integrate(flow, lane.id)}>{t('integrateLane')}</button> : null}{lane.worktreePath !== undefined ? <button type="button" disabled={busy} onClick={() => void store.cleanup(flow, lane.id)}>{t('cleanupWorktree')}</button> : null}</> : lane?.status === 'integrated' ? <>{<small>{t('laneIntegrated')}</small>}{lane.worktreePath !== undefined ? <button type="button" disabled={busy} onClick={() => void store.cleanup(flow, lane.id)}>{t('cleanupWorktree')}</button> : null}</> : lane?.status === 'failed' || lane?.status === 'cancelled' ? <>{<small>{t('laneFailed')}</small>}{lane.worktreePath !== undefined ? <button type="button" disabled={busy} onClick={() => void store.cleanup(flow, lane.id)}>{t('cleanupWorktree')}</button> : null}</> : lane ? <small>{t('worktreeReady')}</small> : <button type="button" disabled={busy} onClick={() => void store.lane(flow, ticket.id)}>{t('prepareLane')}</button>}</div> })}</div>}</section>
       {flow.lanes.some(lane => lane.status === 'completed' || lane.status === 'integrated') && flow.phase !== 'accepted' ? <section className="matt-flow-panel"><h3>{t('acceptance')}</h3>{flow.review ? <>{flow.review.status === 'frozen' || flow.review.status === 'failed' || (flow.review.status === 'complete' && (flow.review.findings ?? []).some(finding => finding.severity !== 'note' && (finding.disposition === undefined || finding.disposition.kind === 'deferred'))) ? <button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.requestReview(flow)}>{t('requestReview')}</button> : flow.review.status === 'running' ? <p>{t('reviewRunning')}</p> : <><p>{t('reviewComplete')}</p>{flow.acceptance?.status === 'ready' && flow.acceptance.candidateCommit !== undefined ? <button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.accept(flow)}>{t('acceptCandidate')}</button> : <button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.prepareAcceptance(flow)}>{t('prepareAcceptance')}</button>}</>}<code>{flow.review.candidateSha256}</code>{(flow.review.findings ?? []).map(finding => <p key={finding.id}>{finding.axis} · {finding.severity} · {finding.title}{finding.disposition ? ` · ${finding.disposition.kind}` : finding.severity !== 'note' ? <><button type="button" disabled={busy} onClick={() => void store.disposeFinding(flow, finding.id, 'fixed')}>{t('findingFixed')}</button><button type="button" disabled={busy} onClick={() => void store.disposeFinding(flow, finding.id, 'rejected')}>{t('findingRejected')}</button><button type="button" disabled={busy} onClick={() => void store.disposeFinding(flow, finding.id, 'deferred')}>{t('findingDeferred')}</button></> : null}</p>)}</> : <button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.prepareAcceptance(flow)}>{t('prepareAcceptance')}</button>}{flow.review?.status === 'complete' && flow.acceptance?.status === 'ready' ? <form className="matt-flow-decision-form" onSubmit={event => { event.preventDefault(); rejectCandidate() }}><label>{t('rejectionReason')}<textarea value={rejectionReason} placeholder={t('rejectionReasonPlaceholder')} onChange={event => setRejectionReason(event.target.value)} /></label><label>{t('returnTo')}<select value={returnTo} onChange={event => setReturnTo(event.target.value as typeof returnTo)}><option value="grilling">{t('grilling')}</option><option value="wayfinding">{t('wayfinding')}</option><option value="ticketing">{t('ticketing')}</option></select></label><button type="submit" disabled={busy || rejectionReason.trim().length === 0}>{t('rejectCandidate')}</button></form> : null}</section> : null}
-      {flow.review?.admissionMatrix ? <section className="matt-flow-panel"><h3>{t('admissionMatrix')}</h3><AdmissionDispositionList title={t('lifecycle')} items={flow.review.admissionMatrix.lifecycle} t={t} /><AdmissionDispositionList title={t('configuration')} items={flow.review.admissionMatrix.configuration} t={t} /></section> : null}
+      {flow.review?.admissionMatrix ? <section className="matt-flow-panel"><h3>{t('admissionMatrix')}</h3><AdmissionFlowChart items={flow.review.admissionMatrix.lifecycle} t={t} /><AdmissionConfigurationSummary items={flow.review.admissionMatrix.configuration} t={t} /></section> : null}
       {flow.rootSessionId !== undefined && flow.phase !== 'accepted' && flow.phase !== 'aborted' ? <section className="matt-flow-panel"><h3>{t('recoveryReconciled')}</h3>{flow.recovery?.status === 'reconciled' ? <p>{t('recoveryReconciled')}</p> : <button type="button" className="matt-flow-primary-action" disabled={busy} onClick={() => void store.resume(flow)}>{t('resumeFlow')}</button>}</section> : null}
       {flow.phase !== 'accepted' && flow.phase !== 'aborted' ? <section className="matt-flow-panel"><h3>{t('phase')}</h3>{flow.phase !== 'paused' ? <button type="button" disabled={busy} onClick={() => void store.advance(flow, 'pause')}>{t('pauseFlow')}</button> : <button type="button" disabled={busy} onClick={() => void store.advance(flow, 'resume')}>{t('resumeFlow')}</button>}<button type="button" disabled={busy} onClick={() => void store.advance(flow, 'abort')}>{t('abortFlow')}</button></section> : null}
       <section className="matt-flow-panel"><h3>{t('repository')}</h3><code>{flow.repoRoot}</code></section>
@@ -185,6 +186,61 @@ function Metric({ label, value }: { label: string; value: number }): React.React
   return <article className="matt-flow-metric"><strong>{value}</strong><span>{label}</span></article>
 }
 
-function AdmissionDispositionList({ title, items, t }: { title: string; items: readonly AdmissionDisposition[]; t: Translate }): React.ReactElement {
-  return <div className="matt-flow-admission-list"><h4>{title}</h4>{items.map(item => <article key={item.id}><strong>{item.subject}</strong><span>{t(item.status === 'not-applicable' ? 'notApplicable' : item.status)}</span><code>{item.evidence.join(' · ')}</code>{item.reason ? <small>{item.reason}</small> : null}</article>)}</div>
+const ADMISSION_LABEL_KEYS: Readonly<Record<string, MattSkillsFlowLocaleKey>> = {
+  'lifecycle:planning': 'admissionPlanning',
+  'lifecycle:activities': 'admissionActivities',
+  'lifecycle:ticket-graph': 'admissionTicketGraph',
+  'lifecycle:lanes': 'admissionLanes',
+  'lifecycle:questions': 'admissionQuestions',
+  'lifecycle:recovery': 'admissionRecovery',
+  'lifecycle:review': 'admissionReview',
+  'lifecycle:acceptance': 'admissionAcceptance',
+  'configuration:skills': 'configSkills',
+  'configuration:tracker': 'configTracker',
+  'configuration:concurrency': 'configConcurrency',
+  'configuration:review-rounds': 'configReviewRounds',
+  'configuration:lane-budget': 'configLaneBudget',
+  'configuration:artifact-budget': 'configArtifactBudget',
+  'configuration:worktree-root': 'configWorktreeRoot',
+}
+
+function admissionStatusLabel(item: AdmissionDisposition, t: Translate): string {
+  return t(item.status === 'not-applicable' ? 'notApplicable' : item.status)
+}
+
+function admissionLabel(item: AdmissionDisposition, t: Translate): string {
+  const key = ADMISSION_LABEL_KEYS[item.id]
+  return key === undefined ? item.subject : t(key)
+}
+
+function AdmissionFlowChart({ items, t }: { items: readonly AdmissionDisposition[]; t: Translate }): React.ReactElement {
+  const nodes: Node[] = items.map((item, index) => {
+    const row = Math.floor(index / 2)
+    const rowOffset = index % 2
+    const reversed = row % 2 === 1
+    const column = reversed ? 1 - rowOffset : rowOffset
+    const rowEnd = rowOffset === 1
+    return {
+      id: item.id,
+      position: { x: column * 300, y: row * 130 },
+      data: { label: <div className="matt-flow-admission-node-content"><span>{index + 1}</span><strong>{admissionLabel(item, t)}</strong><small>{admissionStatusLabel(item, t)}</small></div> },
+      className: `matt-flow-admission-node is-${item.status}`,
+      sourcePosition: rowEnd ? Position.Bottom : reversed ? Position.Left : Position.Right,
+      targetPosition: rowOffset === 0 && index > 0 ? Position.Top : reversed ? Position.Right : Position.Left,
+      draggable: false,
+      selectable: false,
+    }
+  })
+  const edges: Edge[] = items.slice(1).map((item, index) => ({
+    id: `${items[index]?.id ?? index}->${item.id}`,
+    source: items[index]?.id ?? '',
+    target: item.id,
+    type: 'smoothstep',
+    markerEnd: { type: MarkerType.ArrowClosed },
+  }))
+  return <div className="matt-flow-admission-chart" role="img" aria-label={t('admissionChartLabel')}><ReactFlow nodes={nodes} edges={edges} fitView fitViewOptions={{ padding: 0.16, minZoom: 0.58, maxZoom: 1.05 }} minZoom={0.5} maxZoom={1.25} nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} zoomOnDoubleClick={false} zoomOnScroll={false} preventScrolling={false} proOptions={{ hideAttribution: true }}><Background variant={BackgroundVariant.Dots} gap={18} size={1} /><Controls showInteractive={false} /></ReactFlow></div>
+}
+
+function AdmissionConfigurationSummary({ items, t }: { items: readonly AdmissionDisposition[]; t: Translate }): React.ReactElement {
+  return <div className="matt-flow-config-summary"><h4>{t('configuration')}</h4><div>{items.map(item => <span key={item.id} className={`is-${item.status}`}><strong>{admissionLabel(item, t)}</strong><small>{admissionStatusLabel(item, t)}</small></span>)}</div></div>
 }

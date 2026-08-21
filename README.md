@@ -7,7 +7,7 @@ It keeps the current phase, installed Skill snapshot, Decisions, Specs, Ticket d
 ## Features
 
 - Snapshot the installed Matt Skills and their content digests at Flow creation.
-- Preserve the initial goal or Bug context in the Flow and show explicit lifecycle/configuration dispositions at review admission.
+- Preserve the initial goal or Bug context in the Flow and visualize review admission as an interactive lifecycle graph with a concise configuration summary.
 - Record and supersede Decisions before generating and approving a Spec.
 - Publish a dependency-aware Ticket Graph and preview its executable Frontier.
 - Publish the graph to repository-local Markdown by default, or to GitHub Issues when the Host config selects `trackerKind: github` and an authenticated `gh` CLI is available.
@@ -22,7 +22,7 @@ It keeps the current phase, installed Skill snapshot, Decisions, Specs, Ticket d
 Install a packed release with the official DeepSeek Harness plugin command:
 
 ```sh
-pnpm dsh plugin --profile web add --workspace-root ./deepseek-ai-dsh-matt-skills-flow-0.1.0.tgz
+pnpm dsh plugin --profile web add --workspace-root ./deepseek-ai-dsh-matt-skills-flow-0.2.0.tgz
 ```
 
 Start Harness Web normally:
