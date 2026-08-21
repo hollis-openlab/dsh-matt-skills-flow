@@ -29,6 +29,7 @@ await build({
   entryPoints: [join(ROOT, 'src', 'client', 'index.ts')],
   external: ['react'],
   format: 'cjs',
+  loader: { '.css': 'text' },
   minify: true,
   outfile: temporaryClient,
   platform: 'browser',

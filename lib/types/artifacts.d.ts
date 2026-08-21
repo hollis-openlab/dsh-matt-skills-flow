@@ -23,3 +23,4 @@ export declare class ArtifactStore {
     read(record: Pick<ArtifactRecord, 'relativePath' | 'sha256'>): Promise<Buffer>;
     private resolveOwned;
 }
+export declare function redactArtifactBytes(mediaType: string, input: Uint8Array): Buffer;

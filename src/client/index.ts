@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import reactFlowStyles from '@xyflow/react/dist/style.css'
 import { MattFlowLauncher, MattFlowShell } from './components.tsx'
 import { en, NS, zh, type MattSkillsFlowLocaleKey } from './locales.ts'
 import { FlowUiStore } from './store.ts'
@@ -24,7 +25,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const style = document.createElement('style')
     style.dataset.plugin = name
-    style.textContent = STYLES
+    style.textContent = `${reactFlowStyles}\n${STYLES}`
     document.head.appendChild(style)
     return () => { style.remove() }
   }, 'dsh-matt-skills-flow: styles')

@@ -19,6 +19,8 @@ export declare class GitRunner {
     head(cwd: string): Promise<string>;
     /** Return porcelain status without hiding untracked paths. */
     status(cwd: string): Promise<string>;
+    /** Return the changed paths between two immutable commits. */
+    changedFiles(cwd: string, baseCommit: string, commit: string): Promise<string[]>;
     /** Merge one verified Lane branch into an integration worktree. */
     mergeNoEdit(worktreePath: string, branch: string): Promise<string>;
     /** Verify that a Lane commit descends from its recorded base. */
