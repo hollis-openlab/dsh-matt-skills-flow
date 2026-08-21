@@ -6,4 +6,9 @@ lib/
 .dsh-worktrees/
 .scratch/
 .codebase-memory/
+.claude/
+.agent/
+.agents/
+.codegraph/
+.codegragh/
 *.log
